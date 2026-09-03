@@ -104,7 +104,7 @@ describe('🎨 图片生成工具参数验证测试', () => {
       if (completeParams.frames) {
         expect(Array.isArray(completeParams.frames)).toBe(true);
         expect(completeParams.frames.length).toBeGreaterThanOrEqual(1);
-        expect(completeParams.frames.length).toBeLessThanOrEqual(15);
+        expect(completeParams.frames.length).toBeLessThanOrEqual(8);
         completeParams.frames.forEach(frame => {
           expect(typeof frame).toBe('string');
           expect(frame.length).toBeGreaterThan(0);
@@ -114,7 +114,7 @@ describe('🎨 图片生成工具参数验证测试', () => {
       if (completeParams.count !== undefined) {
         expect(typeof completeParams.count).toBe('number');
         expect(completeParams.count).toBeGreaterThanOrEqual(1);
-        expect(completeParams.count).toBeLessThanOrEqual(15);
+        expect(completeParams.count).toBeLessThanOrEqual(8);
       }
     });
 
@@ -223,8 +223,8 @@ describe('🎨 图片生成工具参数验证测试', () => {
     it('应该验证count的边界值', () => {
       const boundaryValues = [
         { value: 1, description: '最小值' },
-        { value: 8, description: '中间值' },
-        { value: 15, description: '最大值' }
+        { value: 4, description: '中间值' },
+        { value: 8, description: '最大值' }
       ];
 
       boundaryValues.forEach(({ value, description }) => {
@@ -236,15 +236,15 @@ describe('🎨 图片生成工具参数验证测试', () => {
 
         expect(params.count).toBe(value);
         expect(params.count).toBeGreaterThanOrEqual(1);
-        expect(params.count).toBeLessThanOrEqual(15);
+        expect(params.count).toBeLessThanOrEqual(8);
       });
     });
 
     it('应该验证frames数组的边界值', () => {
       const boundaryFrames = [
         Array.from({ length: 1 }, (_, i) => `frame${i}`),
-        Array.from({ length: 8 }, (_, i) => `场景描述${i}`),
-        Array.from({ length: 15 }, (_, i) => `复杂场景${i}`)
+        Array.from({ length: 4 }, (_, i) => `场景描述${i}`),
+        Array.from({ length: 8 }, (_, i) => `复杂场景${i}`)
       ];
 
       boundaryFrames.forEach((frames, index) => {
@@ -257,7 +257,7 @@ describe('🎨 图片生成工具参数验证测试', () => {
 
         expect(params.frames).toEqual(frames);
         expect(params.frames!.length).toBeGreaterThanOrEqual(1);
-        expect(params.frames!.length).toBeLessThanOrEqual(15);
+        expect(params.frames!.length).toBeLessThanOrEqual(8);
       });
     });
 

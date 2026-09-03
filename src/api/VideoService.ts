@@ -7,7 +7,7 @@
 
 import { HttpClient } from './HttpClient.js';
 import { ImageUploader } from './ImageUploader.js';
-import { getModel } from '../types/models.js';
+import { DEFAULT_VIDEO_MODEL, getVideoModel } from '../types/models.js';
 import { logger } from '../utils/logger.js';
 
 // ==================== 类型定义 ====================
@@ -26,7 +26,7 @@ export interface VideoResult {
 export interface TextToVideoParams {
   prompt: string;
   model?: string;
-  resolution?: '720p' | '1080p';
+  resolution?: '480p' | '720p' | '1080p';
   fps?: number;
   duration?: number;
   async?: boolean;
@@ -87,15 +87,35 @@ export class VideoService {
       videoAspectRatio = '16:9',
       fps = 24,
       duration = 5000,
-      model = 'jimeng-video-3.0'
+      model = DEFAULT_VIDEO_MODEL
     } = params;
 
-    // 验证参数
-    if (duration < 3000 || duration > 15000) {
-      throw new Error('duration必须在3000-15000毫秒之间');
+    // 在上传/提交前检查模型能力；不能静默改模型、分辨率或时长。
+    const actualModel = getVideoModel(model);
+    const isSeedance = model === 'seedance-2.0' || model === 'seedance-2.5';
+    const minDuration = isSeedance ? 4000 : 3000;
+    const maxDuration = model === 'seedance-2.5' ? 30000 : 15000;
+    if (!Number.isInteger(duration) || duration < minDuration || duration > maxDuration || (isSeedance && duration % 1000 !== 0)) {
+      throw new Error(`${model}: duration必须在${minDuration}-${maxDuration}毫秒之间${isSeedance ? '，且为整秒' : ''}`);
+    }
+    if (!Number.isInteger(fps) || (isSeedance ? fps !== 24 : fps < 12 || fps > 30)) {
+      throw new Error(`${model}: fps必须为${isSeedance ? '24' : '12-30之间的整数'}`);
+    }
+    const resolutions = model === 'seedance-2.0' ? ['720p'] : model === 'seedance-2.5' ? ['480p', '720p', '1080p'] : ['720p', '1080p'];
+    if (!resolutions.includes(resolution)) {
+      throw new Error(`${model}: resolution仅支持${resolutions.join('/')}`);
     }
 
-    const actualModel = getModel(model);
+    // 网页按输出秒数计量；本接口无输入视频，2.5 使用 no_input_video 计费项。
+    const commerceInfo = {
+      benefit_type: model === 'seedance-2.0' ? 'dreamina_video_seedance_20_pro'
+        : model === 'seedance-2.5' ? `seedance_25_${resolution}_no_input_video_output`
+        : 'basic_video_operation_vgfm_v_three',
+      resource_id: 'generate_video',
+      resource_id_type: 'str',
+      resource_sub_type: 'aigc',
+      ...(isSeedance ? { amount: duration / 1000 } : {})
+    };
 
     // 上传首尾帧图片
     let first_frame_image = undefined;
@@ -146,7 +166,7 @@ export class VideoService {
       }
     }
 
-    // 构建draft_content请求体（与旧代码完全一致）
+    // 构建 draft_content 请求体
     const componentId = this.generateUuid();
     const submitId = this.generateUuid();
     const metricsExtra = JSON.stringify({
@@ -159,19 +179,9 @@ export class VideoService {
 
     const requestBody = {
       "extend": {
-        "root_model": end_frame_image ? 'dreamina_ic_generate_video_model_vgfm_3.0' : actualModel,
-        "m_video_commerce_info": {
-          benefit_type: "basic_video_operation_vgfm_v_three",
-          resource_id: "generate_video",
-          resource_id_type: "str",
-          resource_sub_type: "aigc"
-        },
-        "m_video_commerce_info_list": [{
-          benefit_type: "basic_video_operation_vgfm_v_three",
-          resource_id: "generate_video",
-          resource_id_type: "str",
-          resource_sub_type: "aigc"
-        }]
+        "root_model": actualModel,
+        "m_video_commerce_info": commerceInfo,
+        "m_video_commerce_info_list": [commerceInfo]
       },
       "submit_id": submitId,
       "metrics_extra": metricsExtra,
@@ -213,6 +223,7 @@ export class VideoService {
                   duration_ms: duration,
                   first_frame_image: first_frame_image,
                   end_frame_image: end_frame_image,
+                  ...(end_frame_image ? { ending_control: '1.0' } : {}),
                   fps: fps,
                   id: this.generateUuid(),
                   min_version: "3.0.5",
@@ -275,6 +286,7 @@ export class VideoService {
     if (frames.length < 2 || frames.length > 10) {
       throw new Error('帧数量必须在2-10之间');
     }
+    const actualModel = getVideoModel(model, false);
 
     // 按索引排序
     const sortedFrames = [...frames].sort((a, b) => a.idx - b.idx);
@@ -311,8 +323,6 @@ export class VideoService {
       }
     }));
 
-    // 获取模型标识
-    const actualModel = getModel(model);
     const componentId = this.generateUuid();
     const submitId = this.generateUuid();
 
@@ -445,7 +455,7 @@ export class VideoService {
       throw new Error('必须包含至少一个图片引用（如[图0]）');
     }
 
-    const actualModel = getModel(model);
+    const actualModel = getVideoModel(model, false);
 
     // 上传参考图片
     const uploadedImages = await this.uploadFrames(referenceImages);

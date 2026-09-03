@@ -35,12 +35,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/LupinLin1/jimeng-web-mcp.git"
+    "url": "git+https://github.com/mjy0808/jimeng-web-mcp.git"
   },
   "bugs": {
-    "url": "https://github.com/LupinLin1/jimeng-web-mcp/issues"
+    "url": "https://github.com/mjy0808/jimeng-web-mcp/issues"
   },
-  "homepage": "https://github.com/LupinLin1/jimeng-web-mcp#readme",
+  "homepage": "https://github.com/mjy0808/jimeng-web-mcp#readme",
   "author": "rick <1196363729@qq.com>",
   "license": "MIT",
   "scripts": {
@@ -53,6 +53,7 @@
     "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch",
     "test:coverage": "NODE_OPTIONS=--experimental-vm-modules jest --coverage",
     "test:mcp": "npx @modelcontextprotocol/inspector node -r dotenv/config ./lib/index.js",
+    "test:live:image": "tsx script/smoke-image.ts",
     "start:api": "dotenv -e .env --  tsx ./script/start",
     "prepublishOnly": "npm run build",
     "prepack": "npm run build"

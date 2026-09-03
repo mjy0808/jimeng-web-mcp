@@ -45,7 +45,12 @@ export class NewCreditService {
       headers: { 'Referer': 'https://jimeng.jianying.com/ai-tool/image/generate' }
     });
 
-    const credit = result.credit || {};
+    if (result.ret !== undefined && String(result.ret) !== '0') {
+      throw new Error(`即梦积分查询失败 (${result.ret}): ${result.errmsg || '未知错误'}`);
+    }
+    // 当前网页接口使用 data.credit；兼容未包装的旧响应。
+    const credit = result.data?.credit ?? result.credit;
+    if (!credit) throw new Error('即梦积分查询未返回 credit，无法确认余额');
     const giftCredit = credit.gift_credit || 0;
     const purchaseCredit = credit.purchase_credit || 0;
     const vipCredit = credit.vip_credit || 0;

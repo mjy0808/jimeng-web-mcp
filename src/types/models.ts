@@ -8,11 +8,29 @@ import { logger } from '../utils/logger.js';
 
 // ============== 模型映射 ==============
 
+export const LEGACY_VIDEO_MODEL_MAP = {
+  'jimeng-video-3.0-pro': 'dreamina_ic_generate_video_model_vgfm_3.0_pro',
+  'jimeng-video-3.0': 'dreamina_ic_generate_video_model_vgfm_3.0',
+  'jimeng-video-2.0': 'dreamina_ic_generate_video_model_vgfm_lite',
+  'jimeng-video-2.0-pro': 'dreamina_ic_generate_video_model_vgfm1.0',
+  'jimeng-video-multiframe': 'dreamina_ic_generate_video_model_vgfm_3.0'
+} as const;
+
+export const VIDEO_MODEL_MAP = {
+  ...LEGACY_VIDEO_MODEL_MAP,
+  // 即梦网页 get_common_config（2026-09-03）；标准版，不是 Fast / VIP。
+  'seedance-2.0': 'dreamina_seedance_40_pro',
+  'seedance-2.5': 'dreamina_seedance_45_pro'
+} as const;
+
 /**
  * 模型映射表
  * jimeng-4.0 (seedream4.0) 的内部模型名称已通过网络请求分析确认
  */
 export const MODEL_MAP: Record<string, string> = {
+  // 图片 5.0 Lite（Seedream 5.0 Lite）的网页端模型标识。
+  'jimeng-5.0-lite': 'high_aes_general_v50',
+  'jimeng-5.0': 'high_aes_general_v50',
   // 图像生成模型 - 经过实际网络请求验证
   'jimeng-4.0': 'high_aes_general_v40', // 4.0
   'jimeng-4.5': 'high_aes_general_v40l', // [User Verified] 4.5
@@ -24,13 +42,7 @@ export const MODEL_MAP: Record<string, string> = {
   'jimeng-2.0': 'high_aes_general_v20:general_v2.0',
   'jimeng-1.4': 'high_aes_general_v14:general_v1.4',
   'jimeng-xl-pro': 'text2img_xl_sft',
-  // 视频生成模型
-  'jimeng-video-3.0-pro': 'dreamina_ic_generate_video_model_vgfm_3.0_pro',
-  'jimeng-video-3.0': 'dreamina_ic_generate_video_model_vgfm_3.0',
-  'jimeng-video-2.0': 'dreamina_ic_generate_video_model_vgfm_lite',
-  'jimeng-video-2.0-pro': 'dreamina_ic_generate_video_model_vgfm1.0',
-  // 智能多帧视频模型
-  'jimeng-video-multiframe': 'dreamina_ic_generate_video_model_vgfm_3.0'
+  ...VIDEO_MODEL_MAP
 };
 
 // ============== 默认常量 ==============
@@ -106,6 +118,15 @@ export function getModel(model: string): string {
     return MODEL_MAP[DEFAULT_MODEL];
   }
   return mappedModel;
+}
+
+/** 视频请求不允许回退到图片模型，也不把 Seedance 传入旧多帧协议。 */
+export function getVideoModel(model: string, allowSeedance = true): string {
+  const models: Readonly<Record<string, string>> = allowSeedance ? VIDEO_MODEL_MAP : LEGACY_VIDEO_MODEL_MAP;
+  if (!Object.prototype.hasOwnProperty.call(models, model)) {
+    throw new Error(`当前视频模式不支持模型 ${model}；可选：${Object.keys(models).join(', ')}`);
+  }
+  return models[model];
 }
 
 /**

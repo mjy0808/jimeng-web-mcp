@@ -45,8 +45,9 @@ export const API_ENDPOINTS = {
  * Image generation limits
  */
 export const MAX_IMAGES_PER_REQUEST = 4;
+// Current web image-count selector: 1–8. Not the legacy continuation batch size.
+export const MAX_IMAGE_COUNT = 8;
 export const MIN_IMAGE_COUNT = 1;
-export const MAX_IMAGE_COUNT = 50;
 
 /**
  * Task status codes from JiMeng API

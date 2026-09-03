@@ -8,6 +8,9 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { generateImage, getImageResult, getApiClient } from "./api.js";
 import { logger } from './utils/logger.js';
+import { MAX_IMAGE_COUNT } from './types/constants.js';
+import { DEFAULT_VIDEO_MODEL } from './types/models.js';
+import { legacyVideoModelSchema, textToVideoControls } from './schemas/video.schemas.js';
 
 // 服务器启动调试信息
 logger.debug('server.ts loaded', { timestamp: new Date().toISOString() });
@@ -48,11 +51,12 @@ export const createServer = (): McpServer => {
 
   server.tool(
     "image",
-    "生成单张图像",
+    "生成图像，默认只请求一张；仅在用户明确要求多张时增加 count",
     {
       filePath: z.array(z.string()).optional().describe("参考图绝对路径数组，最多4张"),
       prompt: z.string().describe("图像描述文本"),
-      model: z.string().optional().describe("模型名称，支持: jimeng-4.5, jimeng-4.1, jimeng-4.0 (默认), jimeng-3.1, jimeng-3.0"),
+      count: z.number().int().min(1).max(MAX_IMAGE_COUNT).default(1).describe("实际请求的图片总数，1–8，默认1；不是下载数量，不由提示词决定"),
+      model: z.string().optional().describe("模型名称，支持: jimeng-5.0-lite (图片 5.0 Lite), jimeng-4.5 (默认), jimeng-4.1, jimeng-4.0, jimeng-3.1, jimeng-3.0"),
       aspectRatio: z.string().optional().default("auto").describe("宽高比: auto/1:1/16:9/9:16/3:4/4:3/3:2/2:3/21:9"),
       resolution: z.enum(["2k", "4k"]).optional().default("2k").describe("分辨率选择，2k或4k，默认2k"),
       sample_strength: z.number().min(0).max(1).optional().default(0.5).describe("参考图影响强度0-1，默认0.5"),
@@ -96,7 +100,7 @@ export const createServer = (): McpServer => {
           negative_prompt: params.negative_prompt,
           reference_strength: params.reference_strength,
           async: params.async,
-          // 不强制设置 count，让 API 根据 prompt 决定数量
+          count: params.count,
           refresh_token: process.env.JIMENG_API_TOKEN
         } as any);
 
@@ -163,13 +167,13 @@ export const createServer = (): McpServer => {
     "image_batch",
     "系列图片生成 - 用于生成高相关性的连续图片（如：房间系列、故事分镜、绘本画面、产品多角度）",
     {
-      prompts: z.array(z.string()).min(1).max(15).describe("每张图片的完整描述数组（1-15个）。⚠️重要：每个描述应该是一小段话（不是单个词），重点描述该图与其他图的差异部分。示例：[\"现代客厅，灰色沙发靠窗，阳光洒入\", \"温馨卧室，米色床品，木质床头柜\"]"),
+      prompts: z.array(z.string()).min(1).max(MAX_IMAGE_COUNT).describe("每张图片的完整描述数组（1–8个），实际请求总数等于数组长度。每个描述重点写该图与其他图的差异。示例：[\"现代客厅，灰色沙发靠窗，阳光洒入\", \"温馨卧室，米色床品，木质床头柜\"]"),
       basePrompt: z.string().optional().default("").describe("整体通用描述，会添加在最终prompt最前面。用于描述：产品基础信息（材质、颜色）、房子整体风格（三室两厅现代简约）、故事背景设定（赛博朋克世界观）等通用信息。示例：\"三室两厅现代简约风格，木地板，暖色调照明\""),
       async: z.boolean().optional().default(true).describe("是否异步模式，默认true（异步）"),
       filePath: z.array(z.string()).optional().describe("可选参考图路径（影响整体风格，最多4张）"),
       aspectRatio: z.string().optional().default("auto").describe("宽高比: auto/1:1/16:9/9:16/3:4/4:3/3:2/2:3/21:9"),
       resolution: z.enum(["2k", "4k"]).optional().default("2k").describe("分辨率选择，2k或4k，默认2k"),
-      model: z.string().optional().describe("模型名称，支持: jimeng-4.5, jimeng-4.1, jimeng-4.0 (默认)"),
+      model: z.string().optional().describe("模型名称，支持: jimeng-5.0-lite (图片 5.0 Lite), jimeng-4.5 (默认), jimeng-4.1, jimeng-4.0"),
       sample_strength: z.number().min(0).max(1).optional().default(0.5).describe("参考图影响强度0-1，默认0.5"),
       negative_prompt: z.string().optional().default("").describe("负向提示词"),
       reference_strength: z.array(z.number().min(0).max(1)).optional().describe("每张参考图的独立强度数组"),
@@ -370,11 +374,8 @@ export const createServer = (): McpServer => {
     {
       prompt: z.string().min(1).describe("视频描述文本"),
       async: z.boolean().optional().default(true).describe("是否异步模式，默认true（异步）"),
-      resolution: z.enum(["720p", "1080p"]).optional().default("720p").describe("分辨率"),
+      ...textToVideoControls,
       videoAspectRatio: z.enum(["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]).optional().default("16:9").describe("视频宽高比"),
-      fps: z.number().min(12).max(30).optional().default(24).describe("帧率(12-30)"),
-      duration: z.number().min(3000).max(15000).optional().default(5000).describe("时长(毫秒，3-15秒)"),
-      model: z.string().optional().default("jimeng-video-3.0").describe("模型名称")
     },
     async (params: any) => {
       try {
@@ -420,11 +421,8 @@ export const createServer = (): McpServer => {
       firstFrameImage: z.string().optional().describe("首帧图片路径"),
       lastFrameImage: z.string().optional().describe("尾帧图片路径"),
       async: z.boolean().optional().default(true).describe("是否异步模式，默认true（异步）"),
-      resolution: z.enum(["720p", "1080p"]).optional().default("720p").describe("分辨率"),
+      ...textToVideoControls,
       videoAspectRatio: z.enum(["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]).optional().default("16:9").describe("视频宽高比"),
-      fps: z.number().min(12).max(30).optional().default(24).describe("帧率(12-30)"),
-      duration: z.number().min(3000).max(15000).optional().default(5000).describe("时长(毫秒，3-15秒)"),
-      model: z.string().optional().default("jimeng-video-3.0").describe("模型名称")
     },
     async (params: any) => {
       try {
@@ -472,7 +470,7 @@ export const createServer = (): McpServer => {
       resolution: z.enum(["720p", "1080p"]).optional().default("720p").describe("分辨率"),
       videoAspectRatio: z.enum(["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]).optional().default("16:9").describe("视频宽高比"),
       fps: z.number().min(12).max(30).optional().default(24).describe("帧率(12-30)"),
-      model: z.string().optional().default("jimeng-video-3.0").describe("模型名称")
+      model: legacyVideoModelSchema.default(DEFAULT_VIDEO_MODEL).describe("旧多帧协议模型；不支持 Seedance 2.0/2.5")
     },
     async (params: any) => {
       try {
@@ -517,7 +515,7 @@ export const createServer = (): McpServer => {
       videoAspectRatio: z.enum(["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]).optional().default("16:9").describe("视频宽高比"),
       fps: z.number().min(12).max(30).optional().default(24).describe("帧率(12-30)"),
       duration: z.number().min(3000).max(15000).optional().default(5000).describe("时长(毫秒，3-15秒)"),
-      model: z.string().optional().default("jimeng-video-3.0").describe("模型名称")
+      model: legacyVideoModelSchema.default(DEFAULT_VIDEO_MODEL).describe("旧主体融合协议模型；不支持 Seedance 2.0/2.5")
     },
     async (params: any) => {
       try {
@@ -606,4 +604,4 @@ if (isMainModule) {
     logger.error("启动MCP服务器失败", { error });
     process.exit(1);
   });
-} 
+}

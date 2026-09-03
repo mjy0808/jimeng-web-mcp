@@ -151,7 +151,7 @@ export interface ImageGenerationParams {
   blend_mode?: 'single' | 'multi'; // blend模式类型
   reference_strength?: number[]; // 每个参考图的强度（与filePath数组对应）
   // 生成数量控制
-  count?: number; // 生成图片数量，默认1张，最大15张，超过4张会自动触发继续生成
+  count?: number; // 生成图片总数：1–8，默认 frames.length 或 1；不从提示词推断
 
   /**
    * 是否异步模式
@@ -461,7 +461,13 @@ export interface BaseVideoGenerationOptions {
 /**
  * 文生视频选项
  */
-export interface TextToVideoOptions extends BaseVideoGenerationOptions {
+export interface TextToVideoOptions extends Omit<BaseVideoGenerationOptions, 'resolution' | 'duration'> {
+  /** Seedance 2.0 仅720p；2.5 支持480p/720p/1080p */
+  resolution?: '480p' | '720p' | '1080p';
+
+  /** 毫秒；Seedance 2.0 为4-15秒，2.5 为4-30秒，均须整秒 */
+  duration?: number;
+
   /** 视频描述文本 */
   prompt: string;
 

@@ -1,5 +1,35 @@
 # JiMeng Web MCP Server
 
+> 本地维护仓库：[mjy0808/jimeng-web-mcp](https://github.com/mjy0808/jimeng-web-mcp)。
+> 验证本地修改请使用本仓库源码；下文 `npx -y jimeng-web-mcp` 下载的是 npm 发布包，不包含尚未发布的本地修改。
+
+## 本地生图实测
+
+已增加 `jimeng-5.0-lite`（别名 `jimeng-5.0`）→ `high_aes_general_v50`，不改变原来的默认模型。
+
+2026-09-03 首次实测：MCP `image` 提交、`query` 查询、下载成功，但旧请求只在提示词中要求一张，实际返回四张，账号余额减少 12 积分。这是该次请求的结果，不是固定报价。
+
+随后核对即梦网页：数量选择为 1–8；真正的请求字段是 `draft_content.component_list[0].abilities.gen_option.gen_count`，同级 `generate_all` 为 `false`。`metrics_extra.generateCount` 是统计计数，不是出图张数。实现已对齐网页，默认明确请求一张，覆盖文生图与参考图生图；数量异常时报告原任务，不自动续生成或重提。**本次改造只做离线回归，尚未再次付费验证单张结果与扣费。**
+
+字段依据：[官方文生图/参考图转换器](https://lf3-lv-buz.vlabstatic.com/obj/image-lvweb-buz/ies/dreamina/web/jimeng/static/js/async/2821.529655da63.js)、[官方字段序列化定义](https://lf3-lv-buz.vlabstatic.com/obj/image-lvweb-buz/ies/dreamina/web/jimeng/static/js/async/8535.0b68e98a6e.js)。网页内部接口可能变化。
+
+本地测试命令（会消耗即梦积分，需明确允许生成一张）：
+
+```bash
+npm ci --ignore-scripts
+npm run test:live:image -- /absolute/path/credentials.env ./output/my-test --allow-generate-one
+```
+
+`credentials.env` 仅填写 `JIMENG_API_TOKEN=你的sessionid`，放在仓库外。不要把真实凭据写入上游已经跟踪的 `.env`；测试脚本只读取显式指定的文件，不自动加载仓库 `.env`。
+
+测试使用本地源码的 MCP `image` / `query` 工具（内存传输）；发送前核对真实数量字段，最多提交一次，阻止续生成、上传和领取积分，结果必须恰好一张才算通过。已有输出目录再次运行会拒绝重新生成；查询中断时使用：
+
+```bash
+npm run test:live:image -- /absolute/path/credentials.env ./output/my-test --resume
+```
+
+普通 MCP `image` 同样默认 `count=1`；`image_batch` 总数等于 `prompts.length`。均限制 1–8，超出范围直接拒绝，不静默截断或拆单。只有显式请求超过四张且服务端目标数量与请求一致的任务，才保留旧的批次续生成；单张任务不会自动续生成。此轮尚未接入 AI Film Studio。
+
 <div align="center">
 
 [![npm version](https://img.shields.io/npm/v/jimeng-web-mcp.svg)](https://www.npmjs.com/package/jimeng-web-mcp)
@@ -31,7 +61,7 @@
 ## ✨ 核心特性
 
 ### 🎨 图像生成
-- **智能继续生成** - prompt自动识别数量（如"生成9张图片"），一次返回全部结果
+- **明确数量控制** - 默认一张，使用 `count` 指定 1–8 张，不从 prompt 推断消费数量
 - **系列图生成** - 专用于高相关性场景：房间系列、故事分镜、产品多角度
 - **多参考图混合** - 支持最多4张参考图，可控制每张强度
 - **同步/异步模式** - 灵活选择即时返回或后台生成
@@ -98,7 +128,7 @@
 
 | 工具 | 默认模式 | 适用场景 | 说明 |
 |------|---------|---------|------|
-| `image` | 同步 | 单图/智能多图生成 | prompt自动识别数量，如"生成9张图片" |
+| `image` | 同步 | 单图/多图生成 | 默认一张；通过 `count` 明确指定 1–8 张 |
 | `image_batch` | 异步 | 高相关性系列图 | 房间系列、故事分镜、产品多角度 |
 
 ### 视频生成 (4个工具)
@@ -128,11 +158,11 @@
 
 ## 📸 图像生成详解
 
-### `image` - 单图/智能多图生成
+### `image` - 单图/多图生成
 
 #### 核心特性
-- ✅ **智能数量识别** - prompt中的"生成N张图片"会被自动识别
-- ✅ **继续生成自动触发** - 当N>4时，完成前4张后自动确认继续
+- ✅ **真实数量参数** - 默认 `count=1`，不依赖提示词中的数量描述
+- ✅ **受限批次续生成** - 仅对显式多图请求且返回数量一致的任务自动确认
 - ✅ **一次性返回** - 等待所有图片完成，统一返回结果
 - ✅ **多参考图支持** - 最多4张参考图，可单独控制强度
 
@@ -140,7 +170,8 @@
 
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
-| `prompt` | string | ✅ | - | 图片描述，可包含数量（如"生成9张图片"） |
+| `prompt` | string | ✅ | - | 图片内容描述；不负责数量控制 |
+| `count` | integer | ❌ | 1 | 实际请求图片总数，1–8 |
 | `filePath` | string[] | ❌ | - | 参考图路径数组（最多4张） |
 | `model` | string | ❌ | jimeng-4.0 | 模型名称 |
 | `aspectRatio` | string | ❌ | auto | 宽高比：auto/1:1/16:9/9:16/3:4/4:3/3:2/2:3/21:9 |
@@ -151,19 +182,20 @@
 
 #### 使用示例
 
-**示例1: 智能继续生成**
+**示例1: 明确请求一张**
 ```typescript
 // Claude中直接说：
-"请用image工具生成9张不同角度的可爱橘猫图片"
+"请用image工具生成一张可爱橘猫图片"
 
 // 工具调用：
 {
-  "prompt": "帮我生成9张图片，可爱的橘猫，分别是：正面、侧面、背面、俯视、仰视、左卧、右玩、奔跑、睡觉",
-  "model": "jimeng-4.0",
+  "prompt": "可爱的橘猫坐在窗边，柔和晨光",
+  "model": "jimeng-5.0-lite",
+  "count": 1,
   "async": false
 }
 
-// 结果：一次性返回9张图片URL ✅
+// 请求的目标数量：1 张；服务端数量异常时报告原任务，不自动重试。
 ```
 
 **示例2: 多参考图混合**
@@ -182,16 +214,13 @@
 #### 继续生成机制说明
 
 **工作原理**：
-1. API根据prompt识别总数量（如"生成9张" → totalCount=9）
-2. 先生成前4张图片
-3. 完成第4张时暂停，等待确认
-4. 系统自动发送`action=2`确认
-5. API继续生成剩余5张图片
-6. 返回全部9张结果
+1. 使用 `count` 明确请求总数量，`image_batch` 使用描述数组长度
+2. 若服务端在四张后暂停，仅当目标总数与原始请求一致且大于四张时，自动发送 `action=2`
+3. 单张请求、无原请求缓存或目标数量不符时，绝不自动续生成
 
 **重要特性**：
 - ✅ **单次确认**：只发送一次继续请求，不是循环生成
-- ✅ **智能识别**：从prompt自动解析数量，无需count参数
+- ✅ **显式授权数量**：以 `gen_option.gen_count` 为准，提示词不能扩大出图预算
 - ✅ **完整等待**：同步模式会等待所有图片完成
 
 ---
@@ -214,7 +243,7 @@
 
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
-| `prompts` | string[] | ✅ | - | 每张图的差异描述（1-15个） |
+| `prompts` | string[] | ✅ | - | 每张图的差异描述（1–8个），长度即请求总数 |
 | `basePrompt` | string | ❌ | - | 整体通用描述，添加在最前面 |
 | `filePath` | string[] | ❌ | - | 可选参考图（影响整体风格） |
 | `model` | string | ❌ | jimeng-4.0 | 模型名称 |
@@ -283,10 +312,10 @@
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
 | `prompt` | string | ✅ | - | 视频描述 |
-| `model` | string | ❌ | jimeng-video-3.0 | 视频模型 |
-| `resolution` | string | ❌ | 720p | 分辨率：720p/1080p |
-| `fps` | number | ❌ | 24 | 帧率 (12-30) |
-| `duration` | number | ❌ | 5000 | 时长（毫秒，3000-15000） |
+| `model` | string | ❌ | jimeng-video-3.0 | 视频模型，新增 `seedance-2.0` / `seedance-2.5` |
+| `resolution` | string | ❌ | 720p | 2.0 仅720p；2.5 支持480p/720p/1080p；旧模型720p/1080p |
+| `fps` | number | ❌ | 24 | Seedance 固定24；旧模型12-30 |
+| `duration` | number | ❌ | 5000 | 毫秒：2.0 为4000-15000，2.5 为4000-30000，均须整秒；旧模型3000-15000 |
 | `videoAspectRatio` | string | ❌ | 16:9 | 宽高比 |
 | `async` | boolean | ❌ | true | 是否异步 |
 
@@ -351,7 +380,7 @@
 | `frames[].imagePath` | string | ✅ | 帧图片绝对路径 |
 | `frames[].duration_ms` | number | ✅ | 过渡时长（1000-6000毫秒） |
 | `frames[].prompt` | string | ✅ | 过渡过程描述 |
-| 其他参数 | - | - | 同`video` |
+| 其他参数 | - | - | 同`video`的旧模型参数；不支持 Seedance 2.0/2.5 |
 
 #### 使用示例
 
@@ -402,7 +431,7 @@
 |------|------|------|------|
 | `referenceImages` | string[] | ✅ | 参考图路径数组（2-4张） |
 | `prompt` | string | ✅ | 必须包含`[图N]`引用 |
-| 其他参数 | - | - | 同`video` |
+| 其他参数 | - | - | 同`video`的旧模型参数；不支持 Seedance 2.0/2.5 |
 
 #### 使用示例
 
@@ -531,8 +560,8 @@ npm run start:api
 ### 2. 继续生成未触发
 
 **排查步骤**：
-- ✅ prompt中是否明确指定数量（如"生成9张图片"）
-- ✅ 查看API返回的`totalCount`是否正确识别
+- ✅ `count` 是否明确指定大于四张（最大八张）
+- ✅ API 返回的 `totalCount` 是否与请求数量一致；不一致不要自动重新提交
 - ✅ 检查是否在同步模式下（async: false）
 - ✅ 查看日志中的`[智能继续生成检测]`信息
 
@@ -559,7 +588,10 @@ npm run start:api
 
 | 模型名称 | 说明 | 推荐场景 |
 |---------|------|---------|
-| `jimeng-4.0` | 最新第四代模型（默认） | 全场景推荐 |
+| `jimeng-5.0-lite` / `jimeng-5.0` | 图片 5.0 Lite，已实测 | 文生图 |
+| `jimeng-4.5` | 图片 4.5（默认） | 通用图像生成 |
+| `jimeng-4.1` | 图片 4.1 | 图像设计 |
+| `jimeng-4.0` | 图片 4.0 | 通用图像生成 |
 | `jimeng-3.0` | 第三代模型，画面鲜明 | 风格化创作 |
 | `jimeng-2.1` | 稳定版本 | 常规生成 |
 | `jimeng-2.0-pro` | Pro版本 | 高质量需求 |
@@ -568,9 +600,30 @@ npm run start:api
 
 | 模型名称 | 说明 | 推荐场景 |
 |---------|------|---------|
+| `seedance-2.0` | 即梦 Seedance 2.0 标准版，720p、4-15秒、24fps | `video` / `video_frame` |
+| `seedance-2.5` | 即梦 Seedance 2.5，480p/720p/1080p、4-30秒、24fps | `video` / `video_frame` |
 | `jimeng-video-3.0` | 主力模型（默认） | 全场景推荐 |
 | `jimeng-video-3.0-pro` | Pro高质量版本 | 专业级作品 |
 | `jimeng-video-2.0-pro` | 兼容性好 | 多场景适配 |
+
+`seedance-2.0` 不等于旧的 `jimeng-video-2.0`，也不会自动切换为 Fast 或 VIP 版。默认模型不变。
+
+映射和能力取自 2026-09-03 [即梦网页](https://jimeng.jianying.com/ai-tool/generate) 的 `video_generate/get_common_config` 配置：2.0 为 `dreamina_seedance_40_pro`，2.5 为 `dreamina_seedance_45_pro`。本地会在上传前拒绝不支持的参数组合，不自动替换模型或重试付费任务。是否可调用仍取决于账号权限及网页服务；本次仅完成参数构建和离线测试，未进行付费视频生成验证。
+
+旧 `video_multi` / `video_mix` 的多帧/主体融合协议不等同于 Seedance 的全能参考；本次没有接入全能参考、视频编辑或长视频分镜模式。
+
+例如调用 `video`：
+
+```json
+{
+  "model": "seedance-2.5",
+  "prompt": "镜头缓慢前移，一只猫走到窗边坐下，抬头看向窗外，窗帘随风轻轻摆动",
+  "resolution": "720p",
+  "duration": 5000,
+  "fps": 24,
+  "async": true
+}
+```
 
 ---
 

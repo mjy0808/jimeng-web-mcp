@@ -100,17 +100,23 @@ describe('NewCreditService (Composition Pattern)', () => {
       });
     });
 
-    it('should handle missing credit data', async () => {
+    it('should reject missing credit data instead of inventing a zero balance', async () => {
       mockRequest.mockResolvedValue({});
+      await expect(creditService.getCredit()).rejects.toThrow('未返回 credit');
+    });
 
-      const credit = await creditService.getCredit();
-
-      expect(credit).toEqual({
-        giftCredit: 0,
-        purchaseCredit: 0,
-        vipCredit: 0,
-        totalCredit: 0
+    it('should read the current web API data.credit envelope', async () => {
+      mockRequest.mockResolvedValue({ ret: '0', data: { credit: {
+        gift_credit: 1, purchase_credit: 2, vip_credit: 3
+      } } });
+      expect(await creditService.getCredit()).toEqual({
+        giftCredit: 1, purchaseCredit: 2, vipCredit: 3, totalCredit: 6
       });
+    });
+
+    it('should not interpret a login error as zero credits', async () => {
+      mockRequest.mockResolvedValue({ ret: '1015', errmsg: 'check login error' });
+      await expect(creditService.getCredit()).rejects.toThrow('1015');
     });
   });
 

@@ -25,6 +25,7 @@ import { generateUuid, jsonEncode, urlEncode } from "../utils/index.js";
 import { ImageDimensionCalculator } from "../utils/dimensions.js";
 import {
   MAX_IMAGES_PER_REQUEST,
+  MAX_IMAGE_COUNT,
   STATUS_CODES,
   POLLING,
   CONTINUATION_ACTION,
@@ -85,7 +86,14 @@ export class NewJimengClient {
 
     // 处理frames参数（与旧代码一致）
     const validFrames = this.validateAndFilterFrames(frames);
-    let finalPrompt = this.buildPromptWithFrames(prompt, validFrames);
+    const count = params.count === undefined ? (validFrames.length || 1) : params.count;
+    if (!Number.isInteger(count) || count < 1 || count > MAX_IMAGE_COUNT) {
+      throw new Error(`count 必须是 1–${MAX_IMAGE_COUNT} 的整数`);
+    }
+    if (validFrames.length > 0 && count !== validFrames.length) {
+      throw new Error("count 必须与有效 frames 的数量一致");
+    }
+    const finalPrompt = this.buildPromptWithFrames(prompt, validFrames);
 
     // 处理参考图
     let uploadedImages: any[] = [];
@@ -103,6 +111,7 @@ export class NewJimengClient {
       resolution: resolution, // 传递resolution用于buildAbilities计算dimensions
       negative_prompt: negative_prompt || "",
       draft_version: DRAFT_VERSION,
+      count,
     };
 
     // 添加参考图参数（包含完整的图片元数据）
@@ -332,6 +341,7 @@ export class NewJimengClient {
 
     // 解析基础结果
     const result = this.parseQueryResult(record, historyId);
+    if (result.status === "failed") return result;
 
     // 🔥 智能继续生成逻辑（修复：不管status是什么都检查，参考旧代码）
     // 检测是否需要触发继续生成（仅对图片任务）
@@ -359,6 +369,7 @@ export class NewJimengClient {
         totalCount > MAX_IMAGES_PER_REQUEST &&
         finishedCount === MAX_IMAGES_PER_REQUEST &&
         cacheEntry &&
+        cacheEntry.apiParams.count === totalCount &&
         !cacheEntry.continuationSent;
 
       logger.debug(
@@ -531,7 +542,9 @@ export class NewJimengClient {
         continuationSent: CacheManager.get(id)?.continuationSent || false,
         shouldTriggerContinuation:
           totalCount > MAX_IMAGES_PER_REQUEST &&
-          finishedCount === MAX_IMAGES_PER_REQUEST,
+          finishedCount === MAX_IMAGES_PER_REQUEST &&
+          CacheManager.get(id)?.apiParams.count === totalCount &&
+          !CacheManager.get(id)?.continuationSent,
       },
     };
 
@@ -569,6 +582,20 @@ export class NewJimengClient {
           : failCode
             ? `生成失败 (错误码: ${failCode})`
             : "生成失败";
+    }
+
+    // Never let a server-inferred count authorize extra generation. Keep all
+    // returned URLs/counts for diagnosis; do not slice a four-image bill into one.
+    const requestedCount = CacheManager.get(id)?.apiParams.count;
+    if (requestedCount !== undefined && (
+      record.total_image_count > requestedCount ||
+      finishedCount > requestedCount ||
+      (result.imageUrls?.length || 0) > requestedCount ||
+      (status === "completed" && record.total_image_count > 0 && totalCount !== requestedCount)
+    )) {
+      result.status = "failed";
+      result.error = `出图数量不符：请求 ${requestedCount} 张，任务报告 ${totalCount} 张、完成 ${finishedCount} 张。已停止自动续生成；请核对任务 ${id}，不要自动重新提交。`;
+      result._debug.shouldTriggerContinuation = false;
     }
 
     return result;
@@ -683,7 +710,7 @@ export class NewJimengClient {
       prompt: params.prompt,
       firstFrameImage: params.filePath?.[0],
       lastFrameImage: params.filePath?.[1],
-      resolution: params.resolution as "720p" | "1080p" | undefined,
+      resolution: params.resolution as "480p" | "720p" | "1080p" | undefined,
       fps: params.fps,
       duration: params.duration_ms,
       model: params.model,
@@ -875,7 +902,7 @@ export class NewJimengClient {
       root_model: params.model_name,
     };
 
-    // metricsExtra必须包含generateCount: 1（参考jimeng-free-api-all）
+    // This is a telemetry attempt counter, NOT the number of output images.
     const metricsExtra = jsonEncode({
       generateCount: 1,
       promptSource: "custom",
@@ -905,6 +932,13 @@ export class NewJimengClient {
             type: "",
             id: generateUuid(),
             ...this.buildAbilities(params, hasRefImages),
+            // Matches the web text-to-image and reference-image converters.
+            gen_option: {
+              type: "",
+              id: generateUuid(),
+              generate_all: false,
+              gen_count: params.count ?? 1,
+            },
           },
         },
       ],
@@ -940,7 +974,7 @@ export class NewJimengClient {
     );
 
     // 继续生成直接使用原始的metrics_extra，不需要更新generateCount
-    // API会根据原始prompt中的总数量自动完成所有剩余图片
+    // 数量由原始 draft 的 gen_option.gen_count 限定，不从提示词推断
     const updatedMetricsExtra = cached.metricsExtra;
 
     return {
@@ -1169,10 +1203,8 @@ export class NewJimengClient {
       .filter((f) => f != null && typeof f === "string" && f.trim() !== "")
       .map((f) => f.trim());
 
-    // 长度限制
-    if (valid.length > 15) {
-      logger.warn(`[Frames] 截断frames数组: ${valid.length} -> 15`);
-      return valid.slice(0, 15);
+    if (valid.length > MAX_IMAGE_COUNT) {
+      throw new Error(`frames 最多 ${MAX_IMAGE_COUNT} 张；请显式拆分任务`);
     }
 
     return valid;

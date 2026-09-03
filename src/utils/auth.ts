@@ -15,22 +15,12 @@ import { generate_a_bogus } from './a_bogus.js';
  * @returns Cookie字符串
  */
 export function generateCookie(refreshToken: string): string {
-  const sessData = `sessionid=${refreshToken}; sessionid_ss=${refreshToken}; sid_tt=${refreshToken}; sid_guard=${refreshToken}%7C1703836801%7C5183999%7CSat%2C%2027-Jan-2024%2019%3A00%3A00%2BGMT; install_id=4074746043159691; ttreq=1$55b6aae6e1e6dd7b4b4c47ad31dc4d8b0b5d09ef`;
-
-  // 基础Cookie数据
-  const baseCookies = [
-    `passport_csrf_token=d103234c7bb2f1d6e94ee9abbc84f750`,
-    `passport_csrf_token_default=d103234c7bb2f1d6e94ee9abbc84f750`,
-    `is_staff_user=false`,
-    `n_mh=KY1c93FEY4V91lp9CwdHvKGbMz87QH7gwbpJrqawy8Q`,
-    `uid_tt=4d6536b62de9d2e51ff4bde1381be24a`,
-    `uid_tt_ss=4d6536b62de9d2e51ff4bde1381be24a`,
-    `sid_ucp_v1=1.0.0-KDRmNTFlNzIzNDA5MGY3YjRhZDg1ZTlmYmU5MmMzMzM2N2Q2ODI0ODAKHwjZicD3jczFBxCpvY7GBhifrR8gDDDZ37ewBjgIQCYaAmxxIiAxNjVmZTUwNjQxMWI5NWQ3NzFlNjE5YjdkNTA5YmIyOA`,
-    `ssid_ucp_v1=1.0.0-KDRmNTFlNzIzNDA5MGY3YjRhZDg1ZTlmYmU5MmMzMzM2N2Q2ODI0ODAKHwjZicD3jczFBxCpvY7GBhifrR8gDDDZ37ewBjgIQCYaAmxxIiAxNjVmZTUwNjQxMWI5NWQ3NzFlNjE5YjdkNTA5YmIyOA`,
-    sessData
-  ];
-
-  return baseCookies.join('; ');
+  const sessionid = refreshToken.trim();
+  if (!/^[a-zA-Z0-9_-]+$/.test(sessionid)) {
+    throw new Error('sessionid 格式无效：请仅提供 Cookie 中 sessionid 的值');
+  }
+  // 仅使用当前调用者的登录态，不混入其他账号的固定 Cookie。
+  return `sessionid=${sessionid}; sessionid_ss=${sessionid}; sid_tt=${sessionid}`;
 }
 
 /**
