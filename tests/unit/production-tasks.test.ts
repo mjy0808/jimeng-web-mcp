@@ -14,6 +14,13 @@ import { CacheManager } from '../../src/utils/cache-manager.js';
 
 afterEach(() => { jest.restoreAllMocks(); CacheManager.clear(); CacheManager.stopPeriodicEviction(); });
 describe('Film Studio single-result production protocol', () => {
+  it('exposes observed queue counts without inventing percentage or interpreting forecast units', () => {
+    expect(parseProductionTask('1', 'video', { status: 20, queue_info: { queue_idx: 8, queue_length: 40 }, forecast_queue_cost: 4000 }).progress).toEqual({ queuePosition: 8, queueLength: 40 });
+    expect(parseProductionTask('1', 'video', { status: 20, queue_info: { queue_idx: 0, queue_length: 0 } }).progress).toEqual({ queuePosition: 0, queueLength: 0 });
+    for (const value of [-1, 1.5, '5', null, Infinity]) {
+      expect(parseProductionTask('1', 'video', { status: 20, queue_info: { queue_idx: value, queue_length: value } }).progress).toBeUndefined();
+    }
+  });
   it('never forwards the session cookie to upload hosts or follows redirects', async () => {
     const original = axios.defaults.adapter;
     const requests: any[] = [];

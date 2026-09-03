@@ -8,6 +8,7 @@ export interface ProductionTask {
   status: 'not_found' | 'processing' | 'completed' | 'failed';
   outputs: Array<{ mediaType: MediaType; url: string }>;
   error?: string;
+  progress?: { queuePosition?: number; queueLength?: number };
 }
 
 /** Web DAUnifiedEditInput: ordered image resources and text/material chunks. */
@@ -39,6 +40,14 @@ export function unifiedImageInput(prompt: string, images: Array<{ uri?: string; 
 export function parseProductionTask(taskId: string, mediaType: MediaType, record: any): ProductionTask {
   const result: ProductionTask = { taskId, mediaType, status: 'not_found', outputs: [] };
   if (!record) return result;
+  // Expose only observed, well-defined counts. Forecast costs have unverified
+  // units and are not a percentage or a reliable remaining-time estimate.
+  const progress: NonNullable<ProductionTask['progress']> = {};
+  for (const [source, target] of [['queue_idx', 'queuePosition'], ['queue_length', 'queueLength']] as const) {
+    const value = record.queue_info?.[source];
+    if (Number.isSafeInteger(value) && value >= 0) progress[target] = value;
+  }
+  if (Object.keys(progress).length) result.progress = progress;
   const status = record.common_attr?.status ?? record.status;
   if ([30, 'failed', 'error'].includes(status)) return { ...result, status: 'failed', error: `生成失败 (${record.fail_code ?? record.common_attr?.fail_code ?? 'unknown'})` };
   const items: any[] = record.item_list ?? [];

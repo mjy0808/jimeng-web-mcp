@@ -39,11 +39,16 @@ The MCP server SHALL return a stable machine-readable submission identity and qu
 - **WHEN** a query contains only a video cover, failed task or an unexpected image count
 - **THEN** the caller cannot mistake it for a completed valid film result
 
+#### Scenario: Observed queue progress
+- **WHEN** the platform returns non-negative integer queue position or queue length
+- **THEN** the query result exposes these optional counts without changing the task identity
+- **AND** missing or invalid values stay unavailable; percentages and forecast units are not guessed
+
 ### Requirement: Human-gated Film Studio execution
 Film Studio SHALL invoke the local MCP using only the current approved execution package and SHALL retain existing human review gates and durable operation records.
 
 #### Scenario: Submit one current item
-- **WHEN** a current production gate has a valid exported prompt and no active operation
+- **WHEN** a current production gate has a valid human-approved saved prompt and no active operation
 - **THEN** the operation is recorded before one generation submission
 - **AND** credentials are not included in project state, prompts or tool output
 
@@ -56,7 +61,20 @@ Film Studio SHALL invoke the local MCP using only the current approved execution
 - **THEN** it enters the existing import and human-review flow
 - **AND** execution does not select or approve a candidate automatically
 
+#### Scenario: Director turn ends before the video finishes
+- **WHEN** a registered workspace has a current submitted MCP operation
+- **THEN** the Film Studio host periodically queries only that saved task and downloads, validates and imports the matching completed video
+- **AND** it stops at shot review without a new submission or an agent polling loop
+- **AND** queue and execution telemetry update the UI without incrementing creative revisions
+
+#### Scenario: Download or import fails
+- **WHEN** the current task cannot be downloaded or imported
+- **THEN** the operation records an actionable error and waits for explicit retry
+- **AND** retry reuses the original task or downloaded file without consuming another prompt approval
+- **AND** concurrent recovery cannot create duplicate imports or revive an abandoned task
+
 #### Scenario: Single MCP production path
 - **WHEN** a new film is created
-- **THEN** Jimeng MCP is the only image/video production path and does not depend on an open browser
+- **THEN** Jimeng MCP is the only image/video production path, with the adapter privately reading fresh login state from the dedicated local Chrome window
+- **AND** the adapter opens that window when absent and requests human login only when needed; the director does not read cookies or automate website generation
 - **AND** historical ChatGPT metadata remains readable without enabling ChatGPT generation
