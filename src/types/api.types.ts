@@ -138,6 +138,8 @@ export interface LogoInfo {
  * 图像生成参数
  */
 export interface ImageGenerationParams {
+  /** Persisted caller UUID; recovery queries this ID, never re-submits it. */
+  submitId?: string;
   filePath?: string[]; // 参考图片绝对路径数组
   model?: string; // 模型名称，默认使用 DEFAULT_MODEL
   prompt: string; // 提示词

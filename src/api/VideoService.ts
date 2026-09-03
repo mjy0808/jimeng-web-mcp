@@ -9,6 +9,7 @@ import { HttpClient } from './HttpClient.js';
 import { ImageUploader } from './ImageUploader.js';
 import { DEFAULT_VIDEO_MODEL, getVideoModel } from '../types/models.js';
 import { logger } from '../utils/logger.js';
+import { unifiedImageInput, queryProductionTask } from './ProductionTasks.js';
 
 // ==================== 类型定义 ====================
 
@@ -24,6 +25,8 @@ export interface VideoResult {
 }
 
 export interface TextToVideoParams {
+  submitId?: string;
+  referenceImages?: string[];
   prompt: string;
   model?: string;
   resolution?: '480p' | '720p' | '1080p';
@@ -93,6 +96,16 @@ export class VideoService {
     // 在上传/提交前检查模型能力；不能静默改模型、分辨率或时长。
     const actualModel = getVideoModel(model);
     const isSeedance = model === 'seedance-2.0' || model === 'seedance-2.5';
+    const references = params.referenceImages ?? [];
+    if (references.length && (!isSeedance || firstFrameImage || lastFrameImage)) {
+      throw new Error('全能参考仅支持 Seedance 2.0/2.5，不能与首尾帧模式混用');
+    }
+    if ((firstFrameImage || lastFrameImage) && /@(?:图片|视频|音频)\d+/u.test(prompt)) {
+      throw new Error('首尾帧模式不支持 @图片/视频/音频 编号；请使用首帧/尾帧的普通文字描述');
+    }
+    if (references.length > (model === 'seedance-2.5' ? 30 : 9)) throw new Error('参考图数量超过模型上限');
+    // Validate indices before uploading anything.
+    if (references.length) unifiedImageInput(prompt, references.map(() => ({})));
     const minDuration = isSeedance ? 4000 : 3000;
     const maxDuration = model === 'seedance-2.5' ? 30000 : 15000;
     if (!Number.isInteger(duration) || duration < minDuration || duration > maxDuration || (isSeedance && duration % 1000 !== 0)) {
@@ -116,6 +129,10 @@ export class VideoService {
       resource_sub_type: 'aigc',
       ...(isSeedance ? { amount: duration / 1000 } : {})
     };
+
+    const unifiedInput = references.length
+      ? unifiedImageInput(prompt, await Promise.all(references.map(path => this.imageUploader.upload(path))))
+      : undefined;
 
     // 上传首尾帧图片
     let first_frame_image = undefined;
@@ -168,13 +185,14 @@ export class VideoService {
 
     // 构建 draft_content 请求体
     const componentId = this.generateUuid();
-    const submitId = this.generateUuid();
+    const submitId = params.submitId ?? this.generateUuid();
     const metricsExtra = JSON.stringify({
       "enterFrom": "click",
       "isDefaultSeed": 1,
       "promptSource": "custom",
       "isRegenerate": false,
       "originSubmitId": this.generateUuid(),
+      "functionMode": unifiedInput ? 'omni_reference' : 'first_last_frames',
     });
 
     const requestBody = {
@@ -188,9 +206,10 @@ export class VideoService {
       "draft_content": JSON.stringify({
         "type": "draft",
         "id": this.generateUuid(),
-        "min_version": "3.0.5",
+        "min_version": unifiedInput ? "3.3.9" : "3.0.5",
+        ...(unifiedInput ? { min_features: ['AIGC_Video_UnifiedEdit'] } : {}),
         "is_from_tsn": true,
-        "version": "3.3.2",
+        "version": unifiedInput ? "3.3.9" : "3.3.2",
         "main_component_id": componentId,
         "component_list": [{
           "type": "video_base_component",
@@ -226,8 +245,9 @@ export class VideoService {
                   ...(end_frame_image ? { ending_control: '1.0' } : {}),
                   fps: fps,
                   id: this.generateUuid(),
-                  min_version: "3.0.5",
-                  prompt: prompt,
+                  min_version: unifiedInput ? "3.3.9" : "3.0.5",
+                  prompt: unifiedInput ? '' : prompt,
+                  ...(unifiedInput ? { unified_edit_input: unifiedInput } : {}),
                   resolution: resolution,
                   type: "",
                   video_mode: 2
@@ -672,123 +692,8 @@ export class VideoService {
    * 检查任务状态
    */
   private async checkTaskStatus(taskId: string): Promise<any> {
-    const requestParams = this.httpClient.generateRequestParams();
-
-    const response = await this.httpClient.request({
-      method: 'POST',
-      url: '/mweb/v1/get_history_by_ids',
-      params: requestParams,
-      data: { submit_ids: [taskId] }  // 视频轮询使用submit_ids
-    });
-
-    // 输出完整响应（不截断）以便调试
-    // console.log('🔍 [checkTaskStatus] 完整响应:', JSON.stringify(response, null, 2));
-
-    const record = response?.data?.[taskId];
-    if (!record) {
-      // console.log('⚠️  [checkTaskStatus] 未找到record，继续等待');
-      return { status: 'processing' };
-    }
-
-    // console.log('📊 [checkTaskStatus] 完整record:', JSON.stringify(record, null, 2));
-
-    // 解析状态（支持多种状态字段）
-    const status = record.common_attr?.status ?? record.status ?? 'unknown';
-    const failCode = record.common_attr?.fail_code ?? record.fail_code ?? null;
-
-    // 映射状态
-    let mappedStatus: string;
-    if (status === 'completed' || status === 'success' || status === 50) {
-      mappedStatus = 'completed';
-    } else if (status === 'failed' || status === 'error' || status === 30) {
-      mappedStatus = 'failed';
-    } else if (status === 20 || status === 42 || status === 45) {
-      mappedStatus = 'processing';
-    } else {
-      mappedStatus = 'processing';
-    }
-
-    // 提取视频URL（尝试所有可能的路径）
-    let videoUrl = null;
-    if (record.item_list && record.item_list.length > 0) {
-      const item = record.item_list[0];
-
-      // 打印完整item结构以便调试
-      // console.log('🎬 [checkTaskStatus] 完整item结构:', JSON.stringify(item, null, 2));
-
-      // 尝试多种可能的路径
-      videoUrl =
-        // 常见路径
-        item?.video?.transcoded_video?.origin?.video_url ||
-        item?.video?.video_url ||
-        item?.video?.origin?.video_url ||
-        item?.video?.transcoded_video?.video_url ||
-
-        // 备选路径
-        item?.common_attr?.cover_url ||
-        item?.aigc_video_params?.video_url ||
-        item?.url ||
-        item?.video_url ||
-
-        // 新增可能的路径
-        item?.media_info?.video?.video_url ||
-        item?.media_info?.video_url ||
-        item?.video_info?.video_url ||
-        item?.output_video?.video_url ||
-        item?.result?.video_url;
-
-      // 如果还是没找到，深度搜索所有包含url的字段
-      if (!videoUrl) {
-        // console.log('🔍 [checkTaskStatus] 深度搜索URL字段...');
-        videoUrl = this.deepSearchUrl(item);
-        if (videoUrl) {
-          // console.log(`✅ [checkTaskStatus] 深度搜索找到URL:`, videoUrl);
-        }
-      }
-
-      if (!videoUrl) {
-        logger.debug(`❌ [checkTaskStatus] 无法找到视频URL，完整item: ${JSON.stringify(item, null, 2)}`);
-      }
-    } else {
-      // console.log('⚠️ [checkTaskStatus] item_list为空或不存在');
-      // console.log('📦 [checkTaskStatus] record完整结构:', JSON.stringify(record, null, 2));
-    }
-
-    return {
-      status: mappedStatus,
-      video_url: videoUrl,
-      error: failCode ? `生成失败 (错误码: ${failCode})` : null
-    };
-  }
-
-  /**
-   * 深度搜索对象中的URL字段
-   */
-  private deepSearchUrl(obj: any, depth: number = 0, maxDepth: number = 5): string | null {
-    if (!obj || typeof obj !== 'object' || depth > maxDepth) {
-      return null;
-    }
-
-    // 检查当前层级的所有键
-    for (const key of Object.keys(obj)) {
-      const lowerKey = key.toLowerCase();
-
-      // 如果键名包含url，并且值是字符串且以http开头
-      if ((lowerKey.includes('url') || lowerKey.includes('uri')) &&
-          typeof obj[key] === 'string' &&
-          obj[key].startsWith('http')) {
-        // console.log(`🔍 [deepSearchUrl] 在 ${key} 找到URL (深度${depth}):`, obj[key]);
-        return obj[key];
-      }
-
-      // 递归搜索嵌套对象
-      if (typeof obj[key] === 'object') {
-        const found = this.deepSearchUrl(obj[key], depth + 1, maxDepth);
-        if (found) return found;
-      }
-    }
-
-    return null;
+    const task = await queryProductionTask(taskId, 'video', this.httpClient);
+    return { status: task.status === 'not_found' ? 'processing' : task.status, video_url: task.outputs[0]?.url ?? null, error: task.error ?? null };
   }
 
   /**

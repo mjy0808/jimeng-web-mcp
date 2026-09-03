@@ -11,6 +11,7 @@ import { logger } from './utils/logger.js';
 import { MAX_IMAGE_COUNT } from './types/constants.js';
 import { DEFAULT_VIDEO_MODEL } from './types/models.js';
 import { legacyVideoModelSchema, textToVideoControls } from './schemas/video.schemas.js';
+import { registerProductionTools } from './production-tools.js';
 
 // 服务器启动调试信息
 logger.debug('server.ts loaded', { timestamp: new Date().toISOString() });
@@ -35,6 +36,7 @@ export const createServer = (): McpServer => {
   });
 
   logger.debug('MCP server instance created successfully');
+  registerProductionTools(server);
 
   server.tool(
     "ping",

@@ -120,7 +120,7 @@ export class HttpClient {
 
     const requestHeaders = {
       ...FAKE_HEADERS,
-      'Cookie': generateCookie(this.refreshToken),
+      ...(new URL(fullUrl).origin === baseUrl ? { Cookie: generateCookie(this.refreshToken) } : {}),
       ...headers
     };
 
@@ -133,7 +133,11 @@ export class HttpClient {
         data: method.toUpperCase() !== 'GET' ? data : undefined,
         params: method.toUpperCase() === 'GET' ? { ...data, ...params } : params,
         headers: requestHeaders,
-        timeout
+        // The web endpoints have IPv4. Avoid a stalled IPv6 route in Node's
+        // HTTP adapter (reproduced on macOS/Node 26; fetch raced successfully).
+        family: 4,
+        timeout,
+        maxRedirects: 0
       });
 
       return response.data;
@@ -349,7 +353,7 @@ export class HttpClient {
     if (error.response) {
       throw new Error(`即梦API请求错误: ${JSON.stringify(error.response.data)}`);
     } else if (error.request) {
-      throw new Error(`[FINAL-DEBUG] HttpClient.handleError: Caught error with no response.`);
+      throw new Error(`即梦网络连接失败 (${error.code ?? 'NO_RESPONSE'})；查询原任务，不要重复提交`);
     } else {
       throw new Error(`即梦API请求失败: ${error.message}`);
     }

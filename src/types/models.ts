@@ -28,6 +28,8 @@ export const VIDEO_MODEL_MAP = {
  * jimeng-4.0 (seedream4.0) 的内部模型名称已通过网络请求分析确认
  */
 export const MODEL_MAP: Record<string, string> = {
+  'jimeng-5.0-pro': 'high_aes_general_v50p_large',
+  'jimeng-4.7': 'high_aes_general_v43',
   // 图片 5.0 Lite（Seedream 5.0 Lite）的网页端模型标识。
   'jimeng-5.0-lite': 'high_aes_general_v50',
   'jimeng-5.0': 'high_aes_general_v50',

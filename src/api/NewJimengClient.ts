@@ -105,6 +105,7 @@ export class NewJimengClient {
 
     // 构建API参数
     const apiParams: any = {
+      submit_id: params.submitId,
       prompt: finalPrompt, // 使用处理后的prompt
       model_name: getModel(model),
       aspect_ratio: aspectRatio,
@@ -895,7 +896,7 @@ export class NewJimengClient {
     const hasRefImages = !!(
       params.reference_images && params.reference_images.length > 0
     );
-    const submitId = generateUuid();
+    const submitId = params.submit_id || generateUuid();
     const componentId = generateUuid();
 
     const extend = {
@@ -1018,7 +1019,7 @@ export class NewJimengClient {
 
     if (hasRefImages) {
       // blend模式（与旧代码完全一致）
-      const promptPrefix = reference_images.length === 1 ? "##" : "####";
+      const promptPrefix = "##".repeat(reference_images.length);
 
       const blendData: any = {
         type: "",

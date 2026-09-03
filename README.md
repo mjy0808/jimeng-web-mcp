@@ -5,6 +5,19 @@
 
 ## 本地生图实测
 
+### Film Studio 本地集成
+
+Film Studio 使用本地构建的 `lib/server.js`（stdio），不使用 npm 发布包或浏览器自动化。新增两个结构化工具：
+
+- `production_submit`：`submitId` 为调用方预先持久化的 UUID；`mediaType` 为 image/video；参数为 `prompt`、`model`、有序 `references`、`ratio`、`resolution`，视频另传 `durationSeconds`。首帧模式传 `firstFrameImage` 且 `references: []`，正文用“从首帧继续……”等普通文字，不写 `@图片N`。只提交一个结果，返回 `structuredContent.taskId/mediaType/status`，图片另返回 `historyId`。超时后禁止重试提交。
+- `task_query`：按 `taskId` 与 `mediaType` 只读查询一次，无内存缓存依赖，不续生成。返回 `not_found/processing/completed/failed` 与 `outputs`；封面、失败部分结果和异常数量不能充当成功结果。
+
+新增图片模型：`jimeng-5.0-pro → high_aes_general_v50p_large`，`jimeng-4.7 → high_aes_general_v43`。生产工具参考图固定 2K，单张；Pro 最多10张参考，Lite/4.7/4.1 暂按4张，3.1最多1张。Seedance 2.0/2.5 支持图片全能参考（保持 `@图片N` 顺序）或真实首帧输入，两种模式不混用，不支持视频/音频参考。Film Studio 通过首帧模式承接上一镜已选用版本的尾帧，设定图片保留为作者设计依据而非伪装成上传参考；仍需人工审查画面连续性。
+
+凭据由调用方私下传入 `JIMENG_API_TOKEN`，不要填入上游跟踪的 `.env`。HTTP Cookie 仅发往即梦站点，不发送给 ImageX 上传域，不自动跟随重定向。当前 Node HTTP 连接使用 IPv4，避免已复现的 IPv6 路由超时。
+
+2026-09-03：本地 stdio 启动及工具发现通过，使用旧图片任务 UUID 的真实只读查询通过；旧任务多图被单结果检查正确拒绝。本轮未新建付费任务，单张扣费、多参考图生成效果及视频成片仍需另行实测。
+
 已增加 `jimeng-5.0-lite`（别名 `jimeng-5.0`）→ `high_aes_general_v50`，不改变原来的默认模型。
 
 2026-09-03 首次实测：MCP `image` 提交、`query` 查询、下载成功，但旧请求只在提示词中要求一张，实际返回四张，账号余额减少 12 积分。这是该次请求的结果，不是固定报价。
@@ -610,7 +623,7 @@ npm run start:api
 
 映射和能力取自 2026-09-03 [即梦网页](https://jimeng.jianying.com/ai-tool/generate) 的 `video_generate/get_common_config` 配置：2.0 为 `dreamina_seedance_40_pro`，2.5 为 `dreamina_seedance_45_pro`。本地会在上传前拒绝不支持的参数组合，不自动替换模型或重试付费任务。是否可调用仍取决于账号权限及网页服务；本次仅完成参数构建和离线测试，未进行付费视频生成验证。
 
-旧 `video_multi` / `video_mix` 的多帧/主体融合协议不等同于 Seedance 的全能参考；本次没有接入全能参考、视频编辑或长视频分镜模式。
+旧 `video_multi` / `video_mix` 的多帧/主体融合协议不等同于 Seedance 的全能参考；图片全能参考请用 `production_submit`。尚未接入视频编辑或长视频分镜模式。
 
 例如调用 `video`：
 
