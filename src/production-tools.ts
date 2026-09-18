@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { getApiClient } from './api.js';
 import { queryProductionTask } from './api/ProductionTasks.js';
+import { submitVideoEdit } from './api/VideoEditService.js';
 
 export function registerProductionTools(server: McpServer): void {
   const result = (value: Record<string, unknown>) => ({ structuredContent: value, content: [{ type: 'text' as const, text: JSON.stringify(value) }] });
@@ -25,6 +26,13 @@ export function registerProductionTools(server: McpServer): void {
     if (submitted.taskId !== params.submitId) throw new Error('服务端返回不同 submitId；请查询原任务，不得重新提交');
     return result({ taskId: params.submitId, mediaType: 'video', status: 'submitted' });
   });
+  server.tool('production_edit', '编辑一个已审核的源视频。先持久化 submitId；超时后只查询原任务。不会自动拼接局部结果。', {
+    submitId: z.string().uuid(), sourceVideo: z.string().min(1), sourceSha256: z.string().regex(/^[a-f0-9]{64}$/),
+    sourceDurationMs: z.number().int().min(4000).max(30000),
+    startMs: z.number().int().min(0), endMs: z.number().int().min(1),
+    prompt: z.string().min(1).max(1600), references: z.array(z.string()).max(30),
+    resolution: z.enum(['480p', '720p', '1080p']),
+  }, async params => result(await submitVideoEdit(params)));
   server.tool('task_query', '只读查询已有单结果生产任务，不续生成、不补交、不消费生成积分。', {
     taskId: z.string(), mediaType: z.enum(['image', 'video']),
   }, async ({ taskId, mediaType }) => result({ ...await queryProductionTask(taskId, mediaType) }));
