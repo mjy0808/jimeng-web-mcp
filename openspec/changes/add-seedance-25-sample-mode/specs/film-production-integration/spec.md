@@ -15,6 +15,6 @@ The MCP server SHALL submit a requested Seedance 2.5 sample as a Draft task and 
 
 #### Scenario: Film Studio review and recovery
 - **WHEN** a film selects Seedance 2.5 sample mode
-- **THEN** its video resolution is limited to 480p and the prompt review and operation records show sample mode
+- **THEN** Draft video submissions use 480p while the film may retain a higher final resolution, and prompt review and operation records show the sample mode and actual Draft resolution
 - **AND** the adapter checks that the MCP advertises the draft parameter before submission
 - **AND** recovery queries the original sample task without submitting a replacement

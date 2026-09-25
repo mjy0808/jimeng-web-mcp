@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { getApiClient } from './api.js';
 import { queryProductionTask } from './api/ProductionTasks.js';
 import { submitVideoEdit } from './api/VideoEditService.js';
+import { checkVideoDraftPromotion, submitVideoDraftPromotion } from './api/VideoDraftPromotionService.js';
 
 export function registerProductionTools(server: McpServer): void {
   const result = (value: Record<string, unknown>) => ({ structuredContent: value, content: [{ type: 'text' as const, text: JSON.stringify(value) }] });
@@ -35,6 +36,12 @@ export function registerProductionTools(server: McpServer): void {
     prompt: z.string().min(1).max(1600), references: z.array(z.string()).max(30),
     resolution: z.enum(['480p', '720p', '1080p']),
   }, async params => result(await submitVideoEdit(params)));
+  server.tool('production_promote', '从一份已完成的 Seedance 2.5 原始 480p 样片结果生成高清正式版。先持久化新 submitId；不重新生成提示词，超时后只查询新任务。', {
+    submitId: z.string().uuid(), draftTaskId: z.string().uuid(), resolution: z.enum(['720p', '1080p']),
+  }, async params => result(await submitVideoDraftPromotion(params)));
+  server.tool('production_promote_check', '只读验证一份已完成的 Seedance 2.5 样片及当前高清升清规格；不提交生成任务。', {
+    submitId: z.string().uuid(), draftTaskId: z.string().uuid(), resolution: z.enum(['720p', '1080p']),
+  }, async params => result(await checkVideoDraftPromotion(params)));
   server.tool('task_query', '只读查询已有单结果生产任务，不续生成、不补交、不消费生成积分。', {
     taskId: z.string(), mediaType: z.enum(['image', 'video']),
   }, async ({ taskId, mediaType }) => result({ ...await queryProductionTask(taskId, mediaType) }));
