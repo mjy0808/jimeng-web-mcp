@@ -8,7 +8,8 @@ export interface VideoDraftPromotionParams {
 }
 
 function numericId(value: unknown, label: string): string {
-  if ((typeof value !== 'string' && typeof value !== 'number') || !/^\d+$/.test(String(value))) {
+  if ((typeof value !== 'string' && (!Number.isSafeInteger(value) || Number(value) < 0))
+    || !/^\d+$/.test(String(value))) {
     throw new Error(`原始样片缺少${label}，不能按样片升清`);
   }
   return String(value);
@@ -16,7 +17,7 @@ function numericId(value: unknown, label: string): string {
 
 /** Build a finalization request bound to the original Draft history and item. */
 export function videoDraftPromotionBody(p: VideoDraftPromotionParams, source: any, commerce: Record<string, unknown>) {
-  if (source?.common_attr?.status !== 50 && source?.status !== 50) throw new Error('原始样片尚未完成，不能升清');
+  if ((source?.common_attr?.status ?? source?.status) !== 50) throw new Error('原始样片尚未完成，不能升清');
   if (!Array.isArray(source.item_list) || source.item_list.length !== 1) throw new Error('原始样片必须恰好有一个视频结果');
   const historyId = numericId(source.history_record_id ?? source.history_id ?? source.id, '历史记录 ID');
   const itemId = numericId(source.item_list[0]?.id, '视频结果 ID');

@@ -26,6 +26,8 @@ test('finalization binds the original Draft history and item instead of rebuildi
   assert.equal(input.v2v_opt.generate_from_draft.enable, true);
   assert.equal(input.prompt, undefined);
   assert.throws(() => videoDraftPromotionBody(params, { ...source, draft_content: source.draft_content.replace('true', 'false') }, {}), /原始 480p 样片/);
+  assert.throws(() => videoDraftPromotionBody(params, { ...source, history_record_id: Number.MAX_SAFE_INTEGER + 1 }, {}), /历史记录 ID/);
+  assert.throws(() => videoDraftPromotionBody(params, { ...source, common_attr: { status: 30 } }, {}), /尚未完成/);
 });
 
 test('unsupported provider finalization is rejected before the paid generate endpoint', async () => {
