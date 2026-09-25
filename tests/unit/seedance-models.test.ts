@@ -80,6 +80,26 @@ describe('Seedance video model selection', () => {
     }
   });
 
+  it('submits Seedance 2.5 sample mode with the web draft field and version', async () => {
+    await client.generateTextToVideo({ prompt: '样片', model: 'seedance-2.5', resolution: '480p', duration: 4000, draft: true, async: true });
+    const { body, params } = submittedVideo();
+    const draft = JSON.parse(body.draft_content);
+    expect(draft.min_version).toBe('3.3.28');
+    expect(draft.version).toBe('3.3.28');
+    expect(params.video_gen_inputs[0]).toEqual(expect.objectContaining({ is_draft_mode: true, resolution: '480p', min_version: '3.3.28' }));
+    expect(body.extend.m_video_commerce_info.benefit_type).toBe('seedance_25_480p_no_input_video_output');
+    expect(requests).toHaveLength(1);
+  });
+
+  it.each([
+    { model: 'seedance-2.0', resolution: '720p' },
+    { model: 'seedance-2.5', resolution: '720p' },
+    { model: 'seedance-2.5', resolution: '1080p' },
+  ])('rejects invalid sample mode %j before submitting', async options => {
+    await expect(client.generateTextToVideo({ prompt: '样片', duration: 4000, draft: true, async: true, ...options })).rejects.toThrow(/样片模式仅支持 480p/);
+    expect(requests).toHaveLength(0);
+  });
+
   it.each([
     { model: 'seedance-2.0', resolution: '1080p' },
     { model: 'seedance-2.0', resolution: '480p' },

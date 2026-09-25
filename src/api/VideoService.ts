@@ -26,6 +26,7 @@ export interface VideoResult {
 
 export interface TextToVideoParams {
   submitId?: string;
+  draft?: boolean;
   referenceImages?: string[];
   prompt: string;
   model?: string;
@@ -118,6 +119,9 @@ export class VideoService {
     if (!resolutions.includes(resolution)) {
       throw new Error(`${model}: resolution仅支持${resolutions.join('/')}`);
     }
+    if (params.draft && (model !== 'seedance-2.5' || resolution !== '480p')) {
+      throw new Error('Seedance 2.5 样片模式仅支持 480p');
+    }
 
     // 网页按输出秒数计量；本接口无输入视频，2.5 使用 no_input_video 计费项。
     const commerceInfo = {
@@ -206,10 +210,10 @@ export class VideoService {
       "draft_content": JSON.stringify({
         "type": "draft",
         "id": this.generateUuid(),
-        "min_version": unifiedInput ? "3.3.9" : "3.0.5",
+        "min_version": params.draft ? "3.3.28" : unifiedInput ? "3.3.9" : "3.0.5",
         ...(unifiedInput ? { min_features: ['AIGC_Video_UnifiedEdit'] } : {}),
         "is_from_tsn": true,
-        "version": unifiedInput ? "3.3.9" : "3.3.2",
+        "version": params.draft ? "3.3.28" : unifiedInput ? "3.3.9" : "3.3.2",
         "main_component_id": componentId,
         "component_list": [{
           "type": "video_base_component",
@@ -245,7 +249,8 @@ export class VideoService {
                   ...(end_frame_image ? { ending_control: '1.0' } : {}),
                   fps: fps,
                   id: this.generateUuid(),
-                  min_version: unifiedInput ? "3.3.9" : "3.0.5",
+                  min_version: params.draft ? "3.3.28" : unifiedInput ? "3.3.9" : "3.0.5",
+                  ...(params.draft ? { is_draft_mode: true } : {}),
                   prompt: unifiedInput ? '' : prompt,
                   ...(unifiedInput ? { unified_edit_input: unifiedInput } : {}),
                   resolution: resolution,

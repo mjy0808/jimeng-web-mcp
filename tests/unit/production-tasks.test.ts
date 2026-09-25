@@ -125,6 +125,32 @@ describe('Film Studio single-result production protocol', () => {
       await mcp.close(); await server.close();
     }
   });
+  it('routes a Seedance 2.5 sample through production_submit without treating ordinary 480p as a sample', async () => {
+    const request = jest.spyOn(HttpClient.prototype, 'request').mockImplementation(async input => ({ ret: '0', data: { aigc_data: { submit_id: input.data.submit_id } } } as any));
+    const server = new McpServer({ name: 'sample-test', version: '1' });
+    registerProductionTools(server);
+    const mcp = new Client({ name: 'offline-sample', version: '1' });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const originalToken = process.env.JIMENG_API_TOKEN;
+    process.env.JIMENG_API_TOKEN = 'offline-only';
+    const args = { submitId: randomUUID(), mediaType: 'video', model: 'seedance-2.5', prompt: '雨夜街道', references: [], ratio: '16:9', resolution: '480p', durationSeconds: 4 };
+    try {
+      await server.connect(serverTransport);
+      await mcp.connect(clientTransport);
+      expect((await mcp.callTool({ name: 'production_submit', arguments: { ...args, draft: true } })).isError).not.toBe(true);
+      let input = JSON.parse(request.mock.calls.at(-1)![0].data.draft_content).component_list[0].abilities.gen_video.text_to_video_params.video_gen_inputs[0];
+      expect(input.is_draft_mode).toBe(true);
+      expect((await mcp.callTool({ name: 'production_submit', arguments: { ...args, submitId: randomUUID() } })).isError).not.toBe(true);
+      input = JSON.parse(request.mock.calls.at(-1)![0].data.draft_content).component_list[0].abilities.gen_video.text_to_video_params.video_gen_inputs[0];
+      expect(input.is_draft_mode).toBeUndefined();
+      request.mockClear();
+      expect((await mcp.callTool({ name: 'production_submit', arguments: { ...args, model: 'seedance-2.0', draft: true } })).isError).toBe(true);
+      expect(request).not.toHaveBeenCalled();
+    } finally {
+      if (originalToken === undefined) delete process.env.JIMENG_API_TOKEN; else process.env.JIMENG_API_TOKEN = originalToken;
+      await mcp.close(); await server.close();
+    }
+  });
   it('does not mistake covers, partial failures, or extra images for success', () => {
     for (const record of [
       { status: 50, item_list: [{ common_attr: { cover_url: 'https://cdn.byteimg.com/cover.jpg' } }] },
