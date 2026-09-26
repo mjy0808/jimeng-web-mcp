@@ -20,9 +20,11 @@ describe('Seedance video model selection', () => {
     requests = [];
     jest.spyOn(HttpClient.prototype, 'request').mockImplementation(async (options) => {
       if (options.url === '/mweb/v1/video_generate/get_common_config') return {
-        ret: '0', data: { model_list: [{ model_req_key: 'dreamina_seedance_45_pro', model_status: 0,
-          options: [{ key: 'resolution', forbidden_display: false, enum_val: { string_value: ['480p'] } }],
-          commercial_config: { resolution_price_configs: [{ resolution: '480p', price: { benefit_type: 'seedance_25_480p_output' } }] },
+        ret: '0', data: { model_list: [
+          { model_req_key: 'dreamina_seedance_45_pro', model_status: 0, options: [{ key: 'resolution', enum_val: { string_value: ['480p'] } }] },
+          { model_req_key: 'dreamina_seedance_45_pro_draft', model_status: 0, extra: { is_draft_mode: true },
+            options: [{ key: 'resolution', forbidden_display: false, enum_val: { string_value: ['480p'] } }],
+            commercial_config: { resolution_price_configs: [{ resolution: '480p', price: { benefit_type: 'seedance_25_draft_480p_output' } }] },
         }] },
       } as any;
       requests.push(options);
@@ -93,7 +95,9 @@ describe('Seedance video model selection', () => {
     expect(draft.min_version).toBe('3.3.28');
     expect(draft.version).toBe('3.3.28');
     expect(params.video_gen_inputs[0]).toEqual(expect.objectContaining({ is_draft_mode: true, resolution: '480p', min_version: '3.3.28' }));
-    expect(body.extend.m_video_commerce_info.benefit_type).toBe('seedance_25_480p_output');
+    expect(body.extend.m_video_commerce_info.benefit_type).toBe('seedance_25_draft_480p_output');
+    expect(body.extend.root_model).toBe('dreamina_seedance_45_pro_draft');
+    expect(params.model_req_key).toBe('dreamina_seedance_45_pro_draft');
     expect(requests).toHaveLength(1);
   });
 

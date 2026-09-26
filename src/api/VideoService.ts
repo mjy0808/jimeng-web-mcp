@@ -7,7 +7,7 @@
 
 import { HttpClient } from './HttpClient.js';
 import { ImageUploader } from './ImageUploader.js';
-import { DEFAULT_VIDEO_MODEL, getVideoModel } from '../types/models.js';
+import { DEFAULT_VIDEO_MODEL, getVideoModel, SEEDANCE_25_DRAFT_MODEL_KEY } from '../types/models.js';
 import { logger } from '../utils/logger.js';
 import { unifiedImageInput, queryProductionTask } from './ProductionTasks.js';
 
@@ -100,7 +100,7 @@ export class VideoService {
     } = params;
 
     // 在上传/提交前检查模型能力；不能静默改模型、分辨率或时长。
-    const actualModel = getVideoModel(model);
+    const standardModel = getVideoModel(model);
     const isSeedance = model === 'seedance-2.0' || model === 'seedance-2.5';
     const references = params.referenceImages ?? [];
     if (references.length && (!isSeedance || firstFrameImage || lastFrameImage)) {
@@ -127,6 +127,7 @@ export class VideoService {
     if (params.draft && (model !== 'seedance-2.5' || resolution !== '480p')) {
       throw new Error('Seedance 2.5 样片模式仅支持 480p');
     }
+    const actualModel = params.draft ? SEEDANCE_25_DRAFT_MODEL_KEY : standardModel;
 
     // 网页按输出秒数计量；本接口无输入视频，2.5 使用 no_input_video 计费项。
     const commerceInfo = {
@@ -151,7 +152,7 @@ export class VideoService {
         ?.enum_val?.string_value;
       const price = current?.commercial_config?.resolution_price_configs
         ?.find((item: any) => item.resolution === resolution)?.price;
-      if (String(config?.ret) !== '0' || current?.model_status !== 0
+      if (String(config?.ret) !== '0' || current?.model_status !== 0 || current?.extra?.is_draft_mode !== true
         || !Array.isArray(available) || !available.includes(resolution)
         || typeof price?.benefit_type !== 'string' || !price.benefit_type) {
         throw new VideoSubmissionRejectedError('即梦当前未开放所选 Seedance 2.5 样片规格或未返回计费配置；未上传参考图、未提交生成');

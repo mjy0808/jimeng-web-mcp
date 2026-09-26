@@ -23,6 +23,9 @@ export const VIDEO_MODEL_MAP = {
   'seedance-2.5': 'dreamina_seedance_45_pro'
 } as const;
 
+/** 即梦将 Seedance 2.5 样片作为独立模型，而不是普通 480p 加一个标志。 */
+export const SEEDANCE_25_DRAFT_MODEL_KEY = 'dreamina_seedance_45_pro_draft';
+
 /**
  * 模型映射表
  * jimeng-4.0 (seedream4.0) 的内部模型名称已通过网络请求分析确认

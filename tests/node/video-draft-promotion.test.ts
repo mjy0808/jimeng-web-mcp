@@ -9,7 +9,7 @@ const params = { submitId: randomUUID(), draftTaskId, resolution: '1080p' as con
 const source = {
   status: 50, history_record_id: '123456789', item_list: [{ id: '987654321' }],
   draft_content: JSON.stringify({ main_component_id: 'source', component_list: [{ id: 'source',
-    abilities: { gen_video: { text_to_video_params: { model_req_key: 'dreamina_seedance_45_pro',
+    abilities: { gen_video: { text_to_video_params: { model_req_key: 'dreamina_seedance_45_pro_draft',
       video_gen_inputs: [{ is_draft_mode: true, resolution: '480p', duration_ms: 8000 }] } } },
   }] }),
 };
@@ -19,6 +19,7 @@ test('finalization binds the original Draft history and item instead of rebuildi
   const component = JSON.parse(body.draft_content).component_list[0];
   const input = component.abilities.gen_video.text_to_video_params.video_gen_inputs[0];
   assert.equal(body.submit_id, params.submitId);
+  assert.equal(body.extend.root_model, 'dreamina_seedance_45_pro_draft');
   assert.equal(component.process_type, 15);
   assert.equal(component.abilities.gen_video.video_ref_params.item_id, '987654321');
   assert.equal(input.origin_history_id, '123456789');
@@ -26,6 +27,7 @@ test('finalization binds the original Draft history and item instead of rebuildi
   assert.equal(input.v2v_opt.generate_from_draft.enable, true);
   assert.equal(input.prompt, undefined);
   assert.throws(() => videoDraftPromotionBody(params, { ...source, draft_content: source.draft_content.replace('true', 'false') }, {}), /原始 480p 样片/);
+  assert.throws(() => videoDraftPromotionBody(params, { ...source, draft_content: source.draft_content.replace('_draft', '') }, {}), /原始 480p 样片/);
   assert.throws(() => videoDraftPromotionBody(params, { ...source, history_record_id: Number.MAX_SAFE_INTEGER + 1 }, {}), /历史记录 ID/);
   assert.throws(() => videoDraftPromotionBody(params, { ...source, common_attr: { status: 30 } }, {}), /尚未完成/);
 });
@@ -54,11 +56,11 @@ test('supported promotion submits one finalization request at the chosen resolut
       calls.push(url);
       if (url.includes('get_history_by_ids')) return { ret: 0, data: { [draftTaskId]: source } };
       if (url.includes('get_common_config')) return { ret: 0, data: { model_list: [{
-        model_req_key: 'dreamina_seedance_45_pro', model_status: 0,
+        model_req_key: 'dreamina_seedance_45_pro_draft', model_status: 0, extra: { is_draft_mode: true },
         options: [{ key: 'generate_from_draft_config', generate_from_draft_config_val: { resolution: {
           string_value: ['720p', '1080p'], disabled_string_value: [],
         } } }],
-        commercial_config: { resolution_price_configs: [{ resolution: '1080p', price: { benefit_type: 'final-1080p' } }] },
+        commercial_config: { resolution_price_configs: [{ resolution: '1080p', price: { benefit_type: 'seedance_25_draft_1080p_output' } }] },
       }] } };
       generated = data;
       return { ret: 0, data: { aigc_data: { task: { submit_id: params.submitId } } } };
@@ -66,7 +68,7 @@ test('supported promotion submits one finalization request at the chosen resolut
   } as unknown as HttpClient;
   assert.deepEqual(await submitVideoDraftPromotion(params, client), { taskId: params.submitId, mediaType: 'video', status: 'submitted' });
   assert.equal(calls.filter(url => url.endsWith('/generate')).length, 1);
-  assert.equal(generated.extend.m_video_commerce_info.benefit_type, 'final-1080p');
+  assert.equal(generated.extend.m_video_commerce_info.benefit_type, 'seedance_25_draft_1080p_output');
   assert.equal(generated.extend.m_video_commerce_info.amount, 8);
   assert.equal(JSON.parse(generated.draft_content).component_list[0].abilities.gen_video.text_to_video_params.video_gen_inputs[0].resolution, '1080p');
 });

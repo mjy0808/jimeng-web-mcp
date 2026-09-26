@@ -15,10 +15,12 @@ function service(response: unknown, available = true) {
     generateRequestParams: () => ({}),
     request: async ({ url, data }: { url: string; data: any }) => {
       calls.push(url);
-      if (url.includes('get_common_config')) return { ret: '0', data: { model_list: [{
-        model_req_key: 'dreamina_seedance_45_pro', model_status: 0,
-        options: [{ key: 'resolution', forbidden_display: false, enum_val: { string_value: available ? ['480p'] : [] } }],
-        commercial_config: { resolution_price_configs: [{ resolution: '480p', price: { benefit_type: 'current-sample-price' } }] },
+      if (url.includes('get_common_config')) return { ret: '0', data: { model_list: [
+        { model_req_key: 'dreamina_seedance_45_pro', model_status: 0,
+          options: [{ key: 'resolution', enum_val: { string_value: ['480p'] } }] },
+        { model_req_key: 'dreamina_seedance_45_pro_draft', model_status: 0, extra: { is_draft_mode: true },
+          options: [{ key: 'resolution', forbidden_display: false, enum_val: { string_value: available ? ['480p'] : [] } }],
+          commercial_config: { resolution_price_configs: [{ resolution: '480p', price: { benefit_type: 'current-sample-price' } }] },
       }] } };
       submitted = data;
       return response;
@@ -37,9 +39,23 @@ test('sample uses live account price before uploading references or submitting',
   assert.equal(result.taskId, 'offline-id');
   assert.deepEqual(x.calls, ['/mweb/v1/video_generate/get_common_config', 'upload:/approved.png', '/mweb/v1/aigc_draft/generate']);
   assert.equal(x.submitted().extend.m_video_commerce_info.benefit_type, 'current-sample-price');
+  assert.equal(x.submitted().extend.root_model, 'dreamina_seedance_45_pro_draft');
   assert.equal(x.submitted().extend.m_video_commerce_info.amount, 6);
-  const input = JSON.parse(x.submitted().draft_content).component_list[0].abilities.gen_video.text_to_video_params.video_gen_inputs[0];
-  assert.equal(input.is_draft_mode, true);
+  const params = JSON.parse(x.submitted().draft_content).component_list[0].abilities.gen_video.text_to_video_params;
+  assert.equal(params.model_req_key, 'dreamina_seedance_45_pro_draft');
+  assert.equal(params.video_gen_inputs[0].is_draft_mode, true);
+});
+
+test('ordinary 480p remains the standard model without the sample flag', async () => {
+  const x = service({ ret: '0', data: { aigc_data: { submit_id: 'ordinary-id' } } });
+  await x.video.generateTextToVideo({
+    submitId: 'ordinary-id', prompt: '人物前行', model: 'seedance-2.5', resolution: '480p', duration: 6000, async: true,
+  });
+  assert.deepEqual(x.calls, ['/mweb/v1/aigc_draft/generate']);
+  assert.equal(x.submitted().extend.root_model, 'dreamina_seedance_45_pro');
+  const params = JSON.parse(x.submitted().draft_content).component_list[0].abilities.gen_video.text_to_video_params;
+  assert.equal(params.model_req_key, 'dreamina_seedance_45_pro');
+  assert.equal(params.video_gen_inputs[0].is_draft_mode, undefined);
 });
 
 test('unavailable sample configuration fails before uploads or billable submission', async () => {
