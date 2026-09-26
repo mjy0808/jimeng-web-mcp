@@ -4,6 +4,7 @@ import { getApiClient } from './api.js';
 import { queryProductionTask } from './api/ProductionTasks.js';
 import { submitVideoEdit } from './api/VideoEditService.js';
 import { checkVideoDraftPromotion, submitVideoDraftPromotion } from './api/VideoDraftPromotionService.js';
+import { VideoSubmissionRejectedError } from './api/VideoService.js';
 
 export function registerProductionTools(server: McpServer): void {
   const result = (value: Record<string, unknown>) => ({ structuredContent: value, content: [{ type: 'text' as const, text: JSON.stringify(value) }] });
@@ -25,7 +26,15 @@ export function registerProductionTools(server: McpServer): void {
     }
     if (!['seedance-2.0', 'seedance-2.5'].includes(params.model) || params.resolution === '2k' || params.durationSeconds === undefined) throw new Error('不支持的视频模型/规格');
     if (params.draft && (params.model !== 'seedance-2.5' || params.resolution !== '480p')) throw new Error('Seedance 2.5 样片模式仅支持 480p');
-    const submitted = await client.generateTextToVideo({ submitId: params.submitId, prompt: params.prompt, model: params.model, referenceImages: params.references, firstFrameImage: params.firstFrameImage, videoAspectRatio: params.ratio, resolution: params.resolution, duration: params.durationSeconds * 1000, fps: 24, draft: params.draft, async: true });
+    let submitted;
+    try {
+      submitted = await client.generateTextToVideo({ submitId: params.submitId, prompt: params.prompt, model: params.model, referenceImages: params.references, firstFrameImage: params.firstFrameImage, videoAspectRatio: params.ratio, resolution: params.resolution, duration: params.durationSeconds * 1000, fps: 24, draft: params.draft, async: true });
+    } catch (error) {
+      if (error instanceof VideoSubmissionRejectedError) return result({
+        taskId: params.submitId, mediaType: 'video', status: 'rejected', error: error.message,
+      });
+      throw error;
+    }
     if (submitted.taskId !== params.submitId) throw new Error('服务端返回不同 submitId；请查询原任务，不得重新提交');
     return result({ taskId: params.submitId, mediaType: 'video', status: 'submitted' });
   });

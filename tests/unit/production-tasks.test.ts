@@ -126,7 +126,12 @@ describe('Film Studio single-result production protocol', () => {
     }
   });
   it('routes a Seedance 2.5 sample through production_submit without treating ordinary 480p as a sample', async () => {
-    const request = jest.spyOn(HttpClient.prototype, 'request').mockImplementation(async input => ({ ret: '0', data: { aigc_data: { submit_id: input.data.submit_id } } } as any));
+    const request = jest.spyOn(HttpClient.prototype, 'request').mockImplementation(async input => input.url === '/mweb/v1/video_generate/get_common_config'
+      ? { ret: '0', data: { model_list: [{ model_req_key: 'dreamina_seedance_45_pro', model_status: 0,
+        options: [{ key: 'resolution', forbidden_display: false, enum_val: { string_value: ['480p'] } }],
+        commercial_config: { resolution_price_configs: [{ resolution: '480p', price: { benefit_type: 'seedance_25_480p_output' } }] },
+      }] } } as any
+      : { ret: '0', data: { aigc_data: { submit_id: input.data.submit_id } } } as any);
     const server = new McpServer({ name: 'sample-test', version: '1' });
     registerProductionTools(server);
     const mcp = new Client({ name: 'offline-sample', version: '1' });

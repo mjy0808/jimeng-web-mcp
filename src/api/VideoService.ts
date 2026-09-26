@@ -24,6 +24,11 @@ export interface VideoResult {
   };
 }
 
+/** A conclusive pre-submit failure or provider refusal: no task was created. */
+export class VideoSubmissionRejectedError extends Error {
+  override name = 'VideoSubmissionRejectedError';
+}
+
 export interface TextToVideoParams {
   submitId?: string;
   draft?: boolean;
@@ -133,6 +138,26 @@ export class VideoService {
       resource_sub_type: 'aigc',
       ...(isSeedance ? { amount: duration / 1000 } : {})
     };
+
+    if (params.draft) {
+      // Sample commerce keys come from the current account configuration.
+      // Resolve them before any reference upload or billable submission.
+      const config = await this.httpClient.request({
+        url: '/mweb/v1/video_generate/get_common_config',
+        data: { scene: 'generate_video', params: { needCache: true } },
+      });
+      const current = config?.data?.model_list?.find((item: any) => item.model_req_key === actualModel);
+      const available = current?.options?.find((item: any) => item.key === 'resolution' && !item.forbidden_display)
+        ?.enum_val?.string_value;
+      const price = current?.commercial_config?.resolution_price_configs
+        ?.find((item: any) => item.resolution === resolution)?.price;
+      if (String(config?.ret) !== '0' || current?.model_status !== 0
+        || !Array.isArray(available) || !available.includes(resolution)
+        || typeof price?.benefit_type !== 'string' || !price.benefit_type) {
+        throw new VideoSubmissionRejectedError('即梦当前未开放所选 Seedance 2.5 样片规格或未返回计费配置；未上传参考图、未提交生成');
+      }
+      Object.assign(commerceInfo, price, { amount: duration / 1000 });
+    }
 
     const unifiedInput = references.length
       ? unifiedImageInput(prompt, await Promise.all(references.map(path => this.imageUploader.upload(path))))
@@ -642,8 +667,12 @@ export class VideoService {
                      response?.data?.submit_id ||
                      response?.submit_id;
 
+    if (response?.ret !== undefined && String(response.ret) !== '0') {
+      throw new VideoSubmissionRejectedError(`即梦明确拒绝视频提交 (${response.ret})：${response.errmsg || response.message || '参数无效'}`);
+    }
     if (!submitId) {
-      throw new Error(response.errmsg || '提交视频任务失败：未返回submit_id');
+      if (response?.errmsg) throw new VideoSubmissionRejectedError(`即梦明确拒绝视频提交：${response.errmsg}`);
+      throw new Error('提交视频任务失败：未返回 submit_id；请查询原任务，不要再次提交');
     }
 
     return submitId;
