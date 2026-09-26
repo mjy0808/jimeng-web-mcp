@@ -110,8 +110,10 @@ describe('Film Studio single-result production protocol', () => {
       expect(input.prompt).toBe(args.prompt);
       expect(input.duration_ms).toBe(4000);
       expect(JSON.parse(body.metrics_extra).functionMode).toBe('first_last_frames');
+      expect((await mcp.callTool({ name: 'production_submit', arguments: { ...args, prompt: '字'.repeat(16000) } })).isError).not.toBe(true);
       upload.mockClear(); request.mockClear();
       for (const invalid of [
+        { ...args, prompt: '字'.repeat(16001) },
         { ...args, references: ['/person.png'] },
         { ...args, prompt: '@图片1 从首帧继续。' },
         { ...args, mediaType: 'image', model: 'jimeng-5.0-lite', resolution: '2k', durationSeconds: undefined },

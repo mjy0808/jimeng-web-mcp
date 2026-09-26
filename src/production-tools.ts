@@ -5,12 +5,13 @@ import { queryProductionTask } from './api/ProductionTasks.js';
 import { submitVideoEdit } from './api/VideoEditService.js';
 import { checkVideoDraftPromotion, submitVideoDraftPromotion } from './api/VideoDraftPromotionService.js';
 import { VideoSubmissionRejectedError } from './api/VideoService.js';
+import { PRODUCTION_PROMPT_CHARACTER_LIMIT } from './production-prompt-limit.js';
 
 export function registerProductionTools(server: McpServer): void {
   const result = (value: Record<string, unknown>) => ({ structuredContent: value, content: [{ type: 'text' as const, text: JSON.stringify(value) }] });
   server.tool('production_submit', '提交且仅提交一张图片或一段视频。调用前持久化 submitId；超时后只用 task_query 恢复，禁止重试提交。', {
     submitId: z.string().uuid(), mediaType: z.enum(['image', 'video']),
-    prompt: z.string().min(1).max(1600), model: z.string(),
+    prompt: z.string().min(1).max(PRODUCTION_PROMPT_CHARACTER_LIMIT), model: z.string(),
     references: z.array(z.string()).max(30),
     firstFrameImage: z.string().min(1).optional().describe('视频首帧输入；与 references 互斥，提示词使用普通文字而非 @图片 编号'),
     ratio: z.enum(['1:1', '16:9', '9:16', '3:4', '4:3', '3:2', '2:3', '21:9']),
@@ -42,7 +43,7 @@ export function registerProductionTools(server: McpServer): void {
     submitId: z.string().uuid(), sourceVideo: z.string().min(1), sourceSha256: z.string().regex(/^[a-f0-9]{64}$/),
     sourceDurationMs: z.number().int().min(4000).max(30000),
     startMs: z.number().int().min(0), endMs: z.number().int().min(1),
-    prompt: z.string().min(1).max(1600), references: z.array(z.string()).max(30),
+    prompt: z.string().min(1).max(PRODUCTION_PROMPT_CHARACTER_LIMIT), references: z.array(z.string()).max(30),
     resolution: z.enum(['480p', '720p', '1080p']),
   }, async params => result(await submitVideoEdit(params)));
   server.tool('production_promote', '从一份已完成的 Seedance 2.5 原始 480p 样片结果生成高清正式版。先持久化新 submitId；不重新生成提示词，超时后只查询新任务。', {

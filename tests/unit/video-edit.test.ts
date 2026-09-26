@@ -27,10 +27,12 @@ describe('source video editing protocol', () => {
     expect(p.video_gen_inputs[0].first_frame_image).toBeUndefined();
     expect(body.submit_id).toBe(params.submitId);
     expect(body.metrics_extra).toContain('video_edit');
+    const maxPrompt = '@视频1 @图片1' + '字'.repeat(16000 - '@视频1 @图片1'.length);
+    expect(unifiedVideoEditInput({ ...params, prompt: maxPrompt }, video, [{ uri: 'person' }]).meta_list.at(-1)?.text).toContain('字');
   });
 
   it.each([{ startMs: -1 }, { endMs: 11000 }, { startMs: 7000 }, { startMs: 1.5 }, { prompt: '@视频2 @图片1' },
-    { prompt: '@视频1' }, { prompt: '@音频1 @图片1' }, { prompt: 'x'.repeat(1601) }])('rejects invalid input before any HTTP call: %j', async patch => {
+    { prompt: '@视频1' }, { prompt: '@音频1 @图片1' }, { prompt: 'x'.repeat(16001) }])('rejects invalid input before any HTTP call: %j', async patch => {
     const http = new HttpClient('offline-only');
     const request = jest.spyOn(http, 'request');
     await expect(submitVideoEdit({ ...params, ...patch }, http)).rejects.toThrow();

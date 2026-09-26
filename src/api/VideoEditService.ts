@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { HttpClient } from './HttpClient.js';
 import { ImageUploader, type UploadResult } from './ImageUploader.js';
 import { VideoUploader, type UploadedVideo } from './VideoUploader.js';
+import { PRODUCTION_PROMPT_CHARACTER_LIMIT } from '../production-prompt-limit.js';
 
 export interface VideoEditParams {
   submitId: string;
@@ -20,7 +21,7 @@ export function unifiedVideoEditInput(p: VideoEditParams, video: UploadedVideo, 
   if (!Number.isInteger(p.sourceDurationMs) || p.sourceDurationMs < 4000 || p.sourceDurationMs > 30000
     || !Number.isInteger(p.startMs) || !Number.isInteger(p.endMs) || p.startMs < 0 || p.endMs <= p.startMs
     || p.endMs > p.sourceDurationMs) throw new Error('编辑时间范围必须在源视频内，源视频支持 4–30 秒');
-  if (!p.prompt.trim() || p.prompt.length > 1600 || images.length > 30) throw new Error('编辑提示词或参考图数量超过限制');
+  if (!p.prompt.trim() || p.prompt.length > PRODUCTION_PROMPT_CHARACTER_LIMIT || images.length > 30) throw new Error('编辑提示词或参考图数量超过限制');
   const meta: any[] = [];
   const used = new Set<string>();
   let offset = 0;
