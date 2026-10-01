@@ -13,6 +13,7 @@ export function registerProductionTools(server: McpServer): void {
     submitId: z.string().uuid(), mediaType: z.enum(['image', 'video']),
     prompt: z.string().min(1).max(PRODUCTION_PROMPT_CHARACTER_LIMIT), model: z.string(),
     references: z.array(z.string()).max(30),
+    referenceVideo: z.object({ path: z.string().min(1), sha256: z.string().regex(/^[a-f0-9]{64}$/), durationMs: z.number().int().min(4000).max(30000) }).optional().describe('已审核前镜视频全能参考，以 @视频1 绑定；不是编辑或强制首尾帧'),
     firstFrameImage: z.string().min(1).optional().describe('视频首帧输入；与 references 互斥，提示词使用普通文字而非 @图片 编号'),
     ratio: z.enum(['1:1', '16:9', '9:16', '3:4', '4:3', '3:2', '2:3', '21:9']),
     resolution: z.enum(['2k', '480p', '720p', '1080p']), durationSeconds: z.number().int().min(4).max(30).optional(),
@@ -21,7 +22,7 @@ export function registerProductionTools(server: McpServer): void {
     const client = getApiClient();
     if (params.mediaType === 'image') {
       const limits: Record<string, number> = { 'jimeng-5.0-pro': 10, 'jimeng-5.0-lite': 4, 'jimeng-4.7': 4, 'jimeng-4.1': 4, 'jimeng-3.1': 1 };
-      if (!Object.prototype.hasOwnProperty.call(limits, params.model) || params.resolution !== '2k' || params.references.length > limits[params.model] || params.durationSeconds !== undefined || params.firstFrameImage !== undefined || params.draft !== undefined) throw new Error('不支持的图片模型/规格/参考图数量');
+      if (!Object.prototype.hasOwnProperty.call(limits, params.model) || params.resolution !== '2k' || params.references.length > limits[params.model] || params.durationSeconds !== undefined || params.firstFrameImage !== undefined || params.draft !== undefined || params.referenceVideo !== undefined) throw new Error('不支持的图片模型/规格/参考图数量');
       const historyId = await client.generateImage({ submitId: params.submitId, prompt: params.prompt, model: params.model, filePath: params.references, aspectRatio: params.ratio, resolution: '2k', count: 1, async: true, refresh_token: process.env.JIMENG_API_TOKEN! });
       return result({ taskId: params.submitId, historyId, mediaType: 'image', status: 'submitted' });
     }
@@ -29,7 +30,7 @@ export function registerProductionTools(server: McpServer): void {
     if (params.draft && (params.model !== 'seedance-2.5' || params.resolution !== '480p')) throw new Error('Seedance 2.5 样片模式仅支持 480p');
     let submitted;
     try {
-      submitted = await client.generateTextToVideo({ submitId: params.submitId, prompt: params.prompt, model: params.model, referenceImages: params.references, firstFrameImage: params.firstFrameImage, videoAspectRatio: params.ratio, resolution: params.resolution, duration: params.durationSeconds * 1000, fps: 24, draft: params.draft, async: true });
+      submitted = await client.generateTextToVideo({ submitId: params.submitId, prompt: params.prompt, model: params.model, referenceImages: params.references, referenceVideo: params.referenceVideo, firstFrameImage: params.firstFrameImage, videoAspectRatio: params.ratio, resolution: params.resolution, duration: params.durationSeconds * 1000, fps: 24, draft: params.draft, async: true });
     } catch (error) {
       if (error instanceof VideoSubmissionRejectedError) return result({
         taskId: params.submitId, mediaType: 'video', status: 'rejected', error: error.message,

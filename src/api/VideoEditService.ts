@@ -1,3 +1,4 @@
+import { unifiedReferenceInput } from './ProductionTasks.js';
 import { randomUUID } from 'node:crypto';
 import { HttpClient } from './HttpClient.js';
 import { ImageUploader, type UploadResult } from './ImageUploader.js';
@@ -22,33 +23,7 @@ export function unifiedVideoEditInput(p: VideoEditParams, video: UploadedVideo, 
     || !Number.isInteger(p.startMs) || !Number.isInteger(p.endMs) || p.startMs < 0 || p.endMs <= p.startMs
     || p.endMs > p.sourceDurationMs) throw new Error('编辑时间范围必须在源视频内，源视频支持 4–30 秒');
   if (!p.prompt.trim() || p.prompt.length > PRODUCTION_PROMPT_CHARACTER_LIMIT || images.length > 30) throw new Error('编辑提示词或参考图数量超过限制');
-  const meta: any[] = [];
-  const used = new Set<string>();
-  let offset = 0;
-  for (const match of p.prompt.matchAll(/@(?:图片|视频|音频)\d+/gu)) {
-    const image = match[0].startsWith('@图片');
-    const index = image ? Number(match[0].slice(3)) : 0;
-    if ((!image && match[0] !== '@视频1') || (image && (index < 1 || index > images.length))) throw new Error('编辑提示词参考编号无效：' + match[0]);
-    if (match.index > offset) meta.push({ type: '', id: randomUUID(), meta_type: 'text', text: p.prompt.slice(offset, match.index) });
-    meta.push({ type: '', id: randomUUID(), meta_type: image ? 'image' : 'video', text: '',
-      material_ref: { type: '', id: randomUUID(), material_idx: index } });
-    used.add(match[0]);
-    offset = match.index + match[0].length;
-  }
-  if (!used.has('@视频1') || images.some((_, i) => !used.has('@图片' + (i + 1)))) throw new Error('编辑提示词必须绑定源视频和全部参考图');
-  if (offset < p.prompt.length) meta.push({ type: '', id: randomUUID(), meta_type: 'text', text: p.prompt.slice(offset) });
-  return {
-    type: '', id: randomUUID(),
-    material_list: [
-      { type: '', id: randomUUID(), material_type: 'video', video_info: {
-        type: 'video', id: randomUUID(), source_from: 'upload', name: '', vid: video.vid,
-        width: video.width, height: video.height, duration: video.durationMs, fps: video.fps,
-      } },
-      ...images.map(image => ({ type: '', id: randomUUID(), material_type: 'image',
-        image_info: { type: 'image', id: randomUUID(), source_from: 'upload', platform_type: 1,
-          uri: image.uri, width: image.width, height: image.height, format: image.format } })),
-    ],
-    meta_list: meta,
+  return { ...unifiedReferenceInput(p.prompt, images, video),
     edit_input: { enable: true, edit_from_material_idx: 0, start_timestamp_ms: p.startMs, end_timestamp_ms: p.endMs },
   };
 }

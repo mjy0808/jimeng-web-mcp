@@ -1,3 +1,4 @@
+import type { UploadedVideo } from './VideoUploader.js';
 import { randomUUID } from 'node:crypto';
 import { HttpClient } from './HttpClient.js';
 
@@ -11,29 +12,39 @@ export interface ProductionTask {
   progress?: { queuePosition?: number; queueLength?: number };
 }
 
-/** Web DAUnifiedEditInput: ordered image resources and text/material chunks. */
-export function unifiedImageInput(prompt: string, images: Array<{ uri?: string; width?: number; height?: number; format?: string }>) {
+/** Image numbering is independent of material order; an optional video occupies material 0. */
+export function unifiedReferenceInput(prompt: string,
+  images: Array<{ uri?: string; width?: number; height?: number; format?: string }>, video?: UploadedVideo) {
   const meta: any[] = [];
-  const used = new Set<number>();
+  const used = new Set<string>();
   let offset = 0;
-  for (const match of prompt.matchAll(/@图片(\d+)/gu)) {
-    const index = Number(match[1]) - 1;
-    if (index < 0 || index >= images.length) throw new Error(`参考编号越界: ${match[0]}`);
+  for (const match of prompt.matchAll(/@(?:图片|视频|音频)\d+/gu)) {
+    const isImage = match[0].startsWith('@图片');
+    const number = Number(match[0].slice(3));
+    if ((isImage && (number < 1 || number > images.length)) || (!isImage && (!video || match[0] !== '@视频1'))) throw new Error(`参考编号越界: ${match[0]}`);
     if (match.index > offset) meta.push({ type: '', id: randomUUID(), meta_type: 'text', text: prompt.slice(offset, match.index) });
-    meta.push({ type: '', id: randomUUID(), meta_type: 'image', text: '', material_ref: { type: '', id: randomUUID(), material_idx: index } });
-    used.add(index);
+    meta.push({ type: '', id: randomUUID(), meta_type: isImage ? 'image' : 'video', text: '',
+      material_ref: { type: '', id: randomUUID(), material_idx: isImage ? number - 1 + (video ? 1 : 0) : 0 } });
+    used.add(match[0]);
     offset = match.index + match[0].length;
   }
-  if (used.size !== images.length) throw new Error('每张参考图必须通过 @图片N 绑定，禁止丢弃参考图');
+  if (images.some((_, index) => !used.has('@图片' + (index + 1)))) throw new Error('每张参考图必须通过 @图片N 绑定，禁止丢弃参考图');
+  if (video && !used.has('@视频1')) throw new Error('视频参考必须通过 @视频1 绑定');
   if (offset < prompt.length) meta.push({ type: '', id: randomUUID(), meta_type: 'text', text: prompt.slice(offset) });
-  return {
-    type: '', id: randomUUID(),
-    material_list: images.map(image => ({
-      type: '', id: randomUUID(), material_type: 'image',
-      image_info: { type: 'image', id: randomUUID(), source_from: 'upload', platform_type: 1, uri: image.uri, width: image.width, height: image.height, format: image.format },
-    })),
-    meta_list: meta,
-  };
+  const material: any[] = [];
+  if (video) material.push({ type: '', id: randomUUID(), material_type: 'video', video_info: {
+    type: 'video', id: randomUUID(), source_from: 'upload', name: '', vid: video.vid,
+    width: video.width, height: video.height, duration: video.durationMs, fps: video.fps,
+  } });
+  material.push(...images.map(image => ({
+    type: '', id: randomUUID(), material_type: 'image',
+    image_info: { type: 'image', id: randomUUID(), source_from: 'upload', platform_type: 1, uri: image.uri, width: image.width, height: image.height, format: image.format },
+  })));
+  return { type: '', id: randomUUID(), material_list: material, meta_list: meta };
+}
+
+export function unifiedImageInput(prompt: string, images: Array<{ uri?: string; width?: number; height?: number; format?: string }>) {
+  return unifiedReferenceInput(prompt, images);
 }
 
 /** Only actual output fields count. Covers, arbitrary URLs and failed partials do not. */

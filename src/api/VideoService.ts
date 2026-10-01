@@ -1,3 +1,4 @@
+import { VideoUploader, type UploadedVideo } from './VideoUploader.js';
 /**
  * VideoService - 统一视频生成服务
  * 合并4个独立生成器的功能（TextToVideo, MultiFrame, MainReference）
@@ -9,7 +10,7 @@ import { HttpClient } from './HttpClient.js';
 import { ImageUploader } from './ImageUploader.js';
 import { DEFAULT_VIDEO_MODEL, getVideoModel, SEEDANCE_25_DRAFT_MODEL_KEY } from '../types/models.js';
 import { logger } from '../utils/logger.js';
-import { unifiedImageInput, queryProductionTask } from './ProductionTasks.js';
+import { unifiedReferenceInput, queryProductionTask } from './ProductionTasks.js';
 
 // ==================== 类型定义 ====================
 
@@ -33,6 +34,7 @@ export interface TextToVideoParams {
   submitId?: string;
   draft?: boolean;
   referenceImages?: string[];
+  referenceVideo?: { path: string; sha256: string; durationMs: number };
   prompt: string;
   model?: string;
   resolution?: '480p' | '720p' | '1080p';
@@ -103,6 +105,10 @@ export class VideoService {
     const standardModel = getVideoModel(model);
     const isSeedance = model === 'seedance-2.0' || model === 'seedance-2.5';
     const references = params.referenceImages ?? [];
+    const referenceVideo = params.referenceVideo;
+    if (referenceVideo && (model !== 'seedance-2.5' || firstFrameImage || lastFrameImage)) throw new Error('视频参考仅支持 Seedance 2.5 全能参考模式，不能混用首尾帧');
+    if (referenceVideo && (!/^[a-f0-9]{64}$/.test(referenceVideo.sha256) || !Number.isInteger(referenceVideo.durationMs) || referenceVideo.durationMs < 4000 || referenceVideo.durationMs > 30000)) throw new Error('参考视频需要审核 SHA256 和 4–30 秒时长');
+    const placeholderVideo = referenceVideo ? { vid: '', width: 0, height: 0, durationMs: referenceVideo.durationMs, fps: 24 } : undefined;
     if (references.length && (!isSeedance || firstFrameImage || lastFrameImage)) {
       throw new Error('全能参考仅支持 Seedance 2.0/2.5，不能与首尾帧模式混用');
     }
@@ -111,7 +117,7 @@ export class VideoService {
     }
     if (references.length > (model === 'seedance-2.5' ? 30 : 9)) throw new Error('参考图数量超过模型上限');
     // Validate indices before uploading anything.
-    if (references.length) unifiedImageInput(prompt, references.map(() => ({})));
+    if (!firstFrameImage && !lastFrameImage) unifiedReferenceInput(prompt, references.map(() => ({})), placeholderVideo);
     const minDuration = isSeedance ? 4000 : 3000;
     const maxDuration = model === 'seedance-2.5' ? 30000 : 15000;
     if (!Number.isInteger(duration) || duration < minDuration || duration > maxDuration || (isSeedance && duration % 1000 !== 0)) {
@@ -129,7 +135,7 @@ export class VideoService {
     }
     const actualModel = params.draft ? SEEDANCE_25_DRAFT_MODEL_KEY : standardModel;
 
-    // 网页按输出秒数计量；本接口无输入视频，2.5 使用 no_input_video 计费项。
+    // 图片路径保持原计费；有输入视频时须使用当前账号返回的输入视频计费配置。
     const commerceInfo = {
       benefit_type: model === 'seedance-2.0' ? 'dreamina_video_seedance_20_pro'
         : model === 'seedance-2.5' ? `seedance_25_${resolution}_no_input_video_output`
@@ -140,7 +146,7 @@ export class VideoService {
       ...(isSeedance ? { amount: duration / 1000 } : {})
     };
 
-    if (params.draft) {
+    if (params.draft || referenceVideo) {
       // Sample commerce keys come from the current account configuration.
       // Resolve them before any reference upload or billable submission.
       const config = await this.httpClient.request({
@@ -152,16 +158,26 @@ export class VideoService {
         ?.enum_val?.string_value;
       const price = current?.commercial_config?.resolution_price_configs
         ?.find((item: any) => item.resolution === resolution)?.price;
-      if (String(config?.ret) !== '0' || current?.model_status !== 0 || current?.extra?.is_draft_mode !== true
+      if (String(config?.ret) !== '0' || current?.model_status !== 0 || (params.draft && current?.extra?.is_draft_mode !== true)
         || !Array.isArray(available) || !available.includes(resolution)
-        || typeof price?.benefit_type !== 'string' || !price.benefit_type) {
-        throw new VideoSubmissionRejectedError('即梦当前未开放所选 Seedance 2.5 样片规格或未返回计费配置；未上传参考图、未提交生成');
+        || typeof price?.benefit_type !== 'string' || !price.benefit_type
+        || (referenceVideo && (price.benefit_type.includes('no_input_video') || (!params.draft && price.benefit_type !== `seedance_25_${resolution}_output`)))) {
+        throw new VideoSubmissionRejectedError('即梦当前未开放所选 Seedance 2.5 规格或未返回对应输入计费配置；未上传参考、未提交生成');
       }
       Object.assign(commerceInfo, price, { amount: duration / 1000 });
     }
 
-    const unifiedInput = references.length
-      ? unifiedImageInput(prompt, await Promise.all(references.map(path => this.imageUploader.upload(path))))
+    let uploadedVideo: UploadedVideo | undefined;
+    if (referenceVideo) {
+      uploadedVideo = await new VideoUploader(this.httpClient).upload(referenceVideo.path, referenceVideo.sha256);
+      if (Math.abs(uploadedVideo.durationMs - referenceVideo.durationMs) > 100
+        || uploadedVideo.width < 300 || uploadedVideo.height < 300 || uploadedVideo.width > 6000 || uploadedVideo.height > 6000
+        || uploadedVideo.width / uploadedVideo.height < 0.4 || uploadedVideo.width / uploadedVideo.height > 2.5
+        || uploadedVideo.width * uploadedVideo.height < 409600 || uploadedVideo.width * uploadedVideo.height > 8295044
+        || !Number.isFinite(uploadedVideo.fps) || uploadedVideo.fps < 24 || uploadedVideo.fps > 60) throw new VideoSubmissionRejectedError('参考视频时长、尺寸或帧率不符合规格；未提交生成');
+    }
+    const unifiedInput = references.length || uploadedVideo
+      ? unifiedReferenceInput(prompt, await Promise.all(references.map(path => this.imageUploader.upload(path))), uploadedVideo)
       : undefined;
 
     // 上传首尾帧图片
@@ -292,7 +308,7 @@ export class VideoService {
     };
 
     // 提交任务
-    const taskId = await this.submitTaskWithDraft(requestBody);
+    const taskId = await this.submitTaskWithDraft(requestBody, !!referenceVideo);
 
     if (asyncMode) {
       return {
@@ -652,13 +668,13 @@ export class VideoService {
   /**
    * 提交draft格式的视频生成任务
    */
-  private async submitTaskWithDraft(requestBody: any): Promise<string> {
+  private async submitTaskWithDraft(requestBody: any, withInputVideo = false): Promise<string> {
     const requestParams = this.httpClient.generateRequestParams();
 
     const response = await this.httpClient.request({
       method: 'POST',
       url: '/mweb/v1/aigc_draft/generate',
-      params: requestParams,
+      params: { ...requestParams, ...(withInputVideo ? { commerce_with_input_video: '1' } : {}) },
       data: requestBody
     });
 
