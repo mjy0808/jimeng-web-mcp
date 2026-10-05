@@ -15,6 +15,34 @@ import { CacheManager } from '../../src/utils/cache-manager.js';
 
 afterEach(() => { jest.restoreAllMocks(); CacheManager.clear(); CacheManager.stopPeriodicEviction(); });
 describe('Film Studio single-result production protocol', () => {
+  it('forwards reviewed per-image strength through production_submit into the real HTTP payload', async () => {
+    jest.spyOn(ImageUploader.prototype, 'upload').mockImplementation(async path => ({ uri: path, width: 1280, height: 720, format: 'png' } as any));
+    const request = jest.spyOn(HttpClient.prototype, 'request').mockResolvedValue({ ret: '0', data: { aigc_data: { history_record_id: 'image-strength-test' } } } as any);
+    const server = new McpServer({ name: 'image-strength-test', version: '1' }); registerProductionTools(server);
+    const client = new Client({ name: 'offline-strength', version: '1' });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const originalToken = process.env.JIMENG_API_TOKEN; process.env.JIMENG_API_TOKEN = 'offline-only';
+    const args = { submitId: randomUUID(), mediaType: 'image', model: 'jimeng-5.0-pro', prompt: '@图片1结构，@图片2画风，@图片3材质。', references: ['/structure.png', '/style.png', '/sample.png'], referenceStrengths: [0.9, 0.25, 0.4], ratio: '16:9', resolution: '2k' };
+    try {
+      await server.connect(serverTransport); await client.connect(clientTransport);
+      const result = await client.callTool({ name: 'production_submit', arguments: args });
+      expect(result.isError).not.toBe(true);
+      expect(request).toHaveBeenCalledTimes(1);
+      const draft = JSON.parse(request.mock.calls[0]![0].data.draft_content);
+      expect(draft.component_list[0].abilities.blend.ability_list.map((ref: any) => ({ path: ref.image_uri_list[0], strength: ref.strength }))).toEqual(args.references.map((path, i) => ({ path, strength: args.referenceStrengths[i] })));
+      request.mockClear();
+      const invalid = await client.callTool({ name: 'production_submit', arguments: { ...args, referenceStrengths: [0.9] } });
+      expect(invalid.isError).toBe(true);
+      expect(request).not.toHaveBeenCalled();
+      const legacy = { ...args }; delete (legacy as any).referenceStrengths;
+      await client.callTool({ name: 'production_submit', arguments: legacy });
+      const legacyDraft = JSON.parse(request.mock.calls[0]![0].data.draft_content);
+      expect(legacyDraft.component_list[0].abilities.blend.ability_list.map((ref: any) => ref.strength)).toEqual([0.5, 0.5, 0.5]);
+    } finally {
+      if (originalToken === undefined) delete process.env.JIMENG_API_TOKEN; else process.env.JIMENG_API_TOKEN = originalToken;
+      await client.close(); await server.close();
+    }
+  });
   it('exposes observed queue counts without inventing percentage or interpreting forecast units', () => {
     expect(parseProductionTask('1', 'video', { status: 20, queue_info: { queue_idx: 8, queue_length: 40 }, forecast_queue_cost: 4000 }).progress).toEqual({ queuePosition: 8, queueLength: 40 });
     expect(parseProductionTask('1', 'video', { status: 20, queue_info: { queue_idx: 0, queue_length: 0 } }).progress).toEqual({ queuePosition: 0, queueLength: 0 });
