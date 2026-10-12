@@ -180,7 +180,9 @@ describe('Seedance video model selection', () => {
       requests.length = 0;
       const invalid = await mcp.callTool({ name: 'video_frame', arguments: { prompt: 'test', model: 'seedance-2.0', resolution: '1080p', firstFrameImage: '/first.png' } });
       expect(invalid.isError).toBe(true);
-      await expect(mcp.callTool({ name: 'video', arguments: { prompt: 'test', model: 'typo' } })).rejects.toThrow(/Invalid arguments/);
+      const invalidModel = await mcp.callTool({ name: 'video', arguments: { prompt: 'test', model: 'typo' } });
+      expect(invalidModel.isError).toBe(true);
+      expect(JSON.stringify(invalidModel.content)).toMatch(/Invalid arguments/);
       expect(requests).toHaveLength(0);
     } finally {
       await mcp.close();

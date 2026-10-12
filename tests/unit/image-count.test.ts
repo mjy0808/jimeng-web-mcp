@@ -151,11 +151,15 @@ describe('explicit image count', () => {
       }
       for (const args of [{ count: 9 }, { count: 0 }, { count: 1.5 }]) {
         requests.length = 0;
-        await expect(mcp.callTool({ name: 'image', arguments: { prompt: '猫', ...args } })).rejects.toThrow(/Invalid arguments/);
+        const rejected = await mcp.callTool({ name: 'image', arguments: { prompt: '猫', ...args } });
+        expect(rejected.isError).toBe(true);
+        expect(JSON.stringify(rejected.content)).toMatch(/Invalid arguments/);
         expect(requests).toHaveLength(0);
       }
       requests.length = 0;
-      await expect(mcp.callTool({ name: 'image_batch', arguments: { prompts: Array(9).fill('猫') } })).rejects.toThrow(/Invalid arguments/);
+      const rejectedBatch = await mcp.callTool({ name: 'image_batch', arguments: { prompts: Array(9).fill('猫') } });
+      expect(rejectedBatch.isError).toBe(true);
+      expect(JSON.stringify(rejectedBatch.content)).toMatch(/Invalid arguments/);
       expect(requests).toHaveLength(0);
     } finally {
       await mcp.close();

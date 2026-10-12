@@ -7,9 +7,7 @@ import { checkVideoDraftPromotion, submitVideoDraftPromotion } from './api/Video
 import { VideoSubmissionRejectedError } from './api/VideoService.js';
 import { PRODUCTION_PROMPT_CHARACTER_LIMIT } from './production-prompt-limit.js';
 
-export function registerProductionTools(server: McpServer): void {
-  const result = (value: Record<string, unknown>) => ({ structuredContent: value, content: [{ type: 'text' as const, text: JSON.stringify(value) }] });
-  server.tool('production_submit', '提交且仅提交一张图片或一段视频。调用前持久化 submitId；超时后只用 task_query 恢复，禁止重试提交。', {
+export const productionSubmitSchema = z.object({
     submitId: z.string().uuid(), mediaType: z.enum(['image', 'video']),
     prompt: z.string().min(1).max(PRODUCTION_PROMPT_CHARACTER_LIMIT), model: z.string(),
     references: z.array(z.string()).max(30),
@@ -19,20 +17,32 @@ export function registerProductionTools(server: McpServer): void {
     ratio: z.enum(['1:1', '16:9', '9:16', '3:4', '4:3', '3:2', '2:3', '21:9']),
     resolution: z.enum(['2k', '480p', '720p', '1080p']), durationSeconds: z.number().int().min(4).max(30).optional(),
     draft: z.boolean().optional().describe('仅 Seedance 2.5 + 480p；生成可供审核的样片，不是普通 480p 视频'),
-  }, async (params) => {
-    const client = getApiClient();
+});
+
+/** Validate locally before reserving a shared-service generation slot. */
+export function validateProductionSubmit(params: z.infer<typeof productionSubmitSchema>): void {
     if (params.referenceStrengths !== undefined && (params.mediaType !== 'image' || params.referenceStrengths.length !== params.references.length)) throw new Error('参考强度仅用于图片，且必须与参考图片一一对应');
     if (params.mediaType === 'image') {
       const limits: Record<string, number> = { 'jimeng-5.0-pro': 10, 'jimeng-5.0-lite': 4, 'jimeng-4.7': 4, 'jimeng-4.1': 4, 'jimeng-3.1': 1 };
       if (!Object.prototype.hasOwnProperty.call(limits, params.model) || params.resolution !== '2k' || params.references.length > limits[params.model] || params.durationSeconds !== undefined || params.firstFrameImage !== undefined || params.draft !== undefined || params.referenceVideo !== undefined) throw new Error('不支持的图片模型/规格/参考图数量');
-      const historyId = await client.generateImage({ submitId: params.submitId, prompt: params.prompt, model: params.model, filePath: params.references, reference_strength: params.referenceStrengths, aspectRatio: params.ratio, resolution: '2k', count: 1, async: true, refresh_token: process.env.JIMENG_API_TOKEN! });
-      return result({ taskId: params.submitId, historyId, mediaType: 'image', status: 'submitted' });
+      return;
     }
     if (!['seedance-2.0', 'seedance-2.5'].includes(params.model) || params.resolution === '2k' || params.durationSeconds === undefined) throw new Error('不支持的视频模型/规格');
     if (params.draft && (params.model !== 'seedance-2.5' || params.resolution !== '480p')) throw new Error('Seedance 2.5 样片模式仅支持 480p');
+}
+
+export function registerProductionTools(server: McpServer): void {
+  const result = (value: Record<string, unknown>) => ({ structuredContent: value, content: [{ type: 'text' as const, text: JSON.stringify(value) }] });
+  server.tool('production_submit', '提交且仅提交一张图片或一段视频。调用前持久化 submitId；超时后只用 task_query 恢复，禁止重试提交。', productionSubmitSchema.shape, async (params) => {
+    const client = getApiClient();
+    validateProductionSubmit(params);
+    if (params.mediaType === 'image') {
+      const historyId = await client.generateImage({ submitId: params.submitId, prompt: params.prompt, model: params.model, filePath: params.references, reference_strength: params.referenceStrengths, aspectRatio: params.ratio, resolution: '2k', count: 1, async: true, refresh_token: process.env.JIMENG_API_TOKEN! });
+      return result({ taskId: params.submitId, historyId, mediaType: 'image', status: 'submitted' });
+    }
     let submitted;
     try {
-      submitted = await client.generateTextToVideo({ submitId: params.submitId, prompt: params.prompt, model: params.model, referenceImages: params.references, referenceVideo: params.referenceVideo, firstFrameImage: params.firstFrameImage, videoAspectRatio: params.ratio, resolution: params.resolution, duration: params.durationSeconds * 1000, fps: 24, draft: params.draft, async: true });
+      submitted = await client.generateTextToVideo({ submitId: params.submitId, prompt: params.prompt, model: params.model, referenceImages: params.references, referenceVideo: params.referenceVideo, firstFrameImage: params.firstFrameImage, videoAspectRatio: params.ratio, resolution: params.resolution, duration: params.durationSeconds! * 1000, fps: 24, draft: params.draft, async: true });
     } catch (error) {
       if (error instanceof VideoSubmissionRejectedError) return result({
         taskId: params.submitId, mediaType: 'video', status: 'rejected', error: error.message,

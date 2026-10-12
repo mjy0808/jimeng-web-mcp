@@ -56,7 +56,11 @@
     "test:live:image": "tsx script/smoke-image.ts",
     "start:api": "dotenv -e .env --  tsx ./script/start",
     "prepublishOnly": "npm run build",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "test:shared": "node --import tsx --test tests/shared/*.test.ts",
+    "service:status": "node lib/shared-client.js status",
+    "service:stop": "node lib/shared-client.js stop",
+    "login:shared": "node lib/shared-client.js login"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
@@ -71,14 +75,14 @@
     "typescript": "^5.8.3"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.10.2",
+    "@modelcontextprotocol/sdk": "1.28.0",
     "@types/image-size": "^0.7.0",
     "axios": "^1.9.0",
     "crc32": "^0.2.2",
     "dotenv": "^16.5.0",
     "image-size": "^2.0.2",
     "uuid": "^11.1.0",
-    "zod": "^3.24.3"
+    "zod": "3.25.76"
   },
   "directories": {
     "doc": "docs",

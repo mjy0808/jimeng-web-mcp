@@ -7,7 +7,7 @@
 
 ### Film Studio 本地集成
 
-Film Studio 使用本地构建的 `lib/server.js`（stdio），不使用 npm 发布包或浏览器自动化。新增两个结构化工具：
+Film Studio 默认使用本地构建的 `lib/shared-client.js`（stdio 桥接），由调用方按需启动并复用共享服务，服务空闲后继续运行。登录、任务队列与全局生成并发由即梦仓库管理；接入其他项目、状态与手动停止见 [多项目共享服务](SHARED-SERVICE.md)。原 `lib/server.js` 仍保留用于兼容旧接入。生产接口包括：
 
 - `production_submit`：`submitId` 为调用方预先持久化的 UUID；`mediaType` 为 image/video；参数为 `prompt`、`model`、有序 `references`、`ratio`、`resolution`，视频另传 `durationSeconds`。首帧模式传 `firstFrameImage` 且 `references: []`，正文用“从首帧继续……”等普通文字，不写 `@图片N`。Seedance 2.5 样片传 `draft: true` 且只支持 480p；这是独立样片任务，不是普通 480p 视频。只提交一个结果，返回 `structuredContent.taskId/mediaType/status`，图片另返回 `historyId`。超时后禁止重试提交。
 - `task_query`：按 `taskId` 与 `mediaType` 只读查询一次，无内存缓存依赖，不续生成。返回 `not_found/processing/completed/failed` 与 `outputs`；封面、失败部分结果和异常数量不能充当成功结果。
