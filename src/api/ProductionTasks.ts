@@ -12,34 +12,35 @@ export interface ProductionTask {
   progress?: { queuePosition?: number; queueLength?: number };
 }
 
-/** Image numbering is independent of material order; an optional video occupies material 0. */
+/** Each media kind has its own numbering, while the provider uses one material list. */
 export function unifiedReferenceInput(prompt: string,
-  images: Array<{ uri?: string; width?: number; height?: number; format?: string }>, video?: UploadedVideo) {
-  const meta: any[] = [];
-  const used = new Set<string>();
-  let offset = 0;
-  for (const match of prompt.matchAll(/@(?:图片|视频|音频)\d+/gu)) {
-    const isImage = match[0].startsWith('@图片');
-    const number = Number(match[0].slice(3));
-    if ((isImage && (number < 1 || number > images.length)) || (!isImage && (!video || match[0] !== '@视频1'))) throw new Error(`参考编号越界: ${match[0]}`);
-    if (match.index > offset) meta.push({ type: '', id: randomUUID(), meta_type: 'text', text: prompt.slice(offset, match.index) });
-    meta.push({ type: '', id: randomUUID(), meta_type: isImage ? 'image' : 'video', text: '',
-      material_ref: { type: '', id: randomUUID(), material_idx: isImage ? number - 1 + (video ? 1 : 0) : 0 } });
-    used.add(match[0]);
-    offset = match.index + match[0].length;
-  }
-  if (images.some((_, index) => !used.has('@图片' + (index + 1)))) throw new Error('每张参考图必须通过 @图片N 绑定，禁止丢弃参考图');
-  if (video && !used.has('@视频1')) throw new Error('视频参考必须通过 @视频1 绑定');
-  if (offset < prompt.length) meta.push({ type: '', id: randomUUID(), meta_type: 'text', text: prompt.slice(offset) });
+  images: Array<{ uri?: string; width?: number; height?: number; format?: string }>, video?: UploadedVideo,
+  audios: Array<{ vid: string; durationMs: number }> = []) {
   const material: any[] = [];
   if (video) material.push({ type: '', id: randomUUID(), material_type: 'video', video_info: {
     type: 'video', id: randomUUID(), source_from: 'upload', name: '', vid: video.vid,
     width: video.width, height: video.height, duration: video.durationMs, fps: video.fps,
   } });
-  material.push(...images.map(image => ({
-    type: '', id: randomUUID(), material_type: 'image',
-    image_info: { type: 'image', id: randomUUID(), source_from: 'upload', platform_type: 1, uri: image.uri, width: image.width, height: image.height, format: image.format },
-  })));
+  material.push(...images.map(image => ({ type: '', id: randomUUID(), material_type: 'image',
+    image_info: { type: 'image', id: randomUUID(), source_from: 'upload', platform_type: 1, uri: image.uri, width: image.width, height: image.height, format: image.format } })));
+  material.push(...audios.map(audio => ({ type: '', id: randomUUID(), material_type: 'audio', audio_info: {
+    type: 'audio', id: randomUUID(), source_from: 'upload', name: '', vid: audio.vid, duration: audio.durationMs,
+  } })));
+  const refs = [...(video ? [{ token: '@视频1', type: 'video', index: 0 }] : []),
+    ...images.map((_, index) => ({ token: `@图片${index + 1}`, type: 'image', index: index + (video ? 1 : 0) })),
+    ...audios.map((_, index) => ({ token: `@音频${index + 1}`, type: 'audio', index: index + images.length + (video ? 1 : 0) }))];
+  const meta: any[] = [], used = new Set<string>(); let offset = 0;
+  for (const match of prompt.matchAll(/@(?:图片|视频|音频)\d+/gu)) {
+    const ref = refs.find(ref => ref.token === match[0]);
+    if (!ref) throw new Error(`参考编号越界: ${match[0]}`);
+    if (match.index > offset) meta.push({ type: '', id: randomUUID(), meta_type: 'text', text: prompt.slice(offset, match.index) });
+    meta.push({ type: '', id: randomUUID(), meta_type: ref.type, text: '', material_ref: { type: '', id: randomUUID(), material_idx: ref.index } });
+    used.add(ref.token); offset = match.index + match[0].length;
+  }
+  if (images.some((_, index) => !used.has('@图片' + (index + 1)))) throw new Error('每张参考图必须通过 @图片N 绑定，禁止丢弃参考图');
+  if (video && !used.has('@视频1')) throw new Error('视频参考必须通过 @视频1 绑定');
+  if (audios.some((_, index) => !used.has('@音频' + (index + 1)))) throw new Error('每段音频参考必须通过 @音频N 绑定');
+  if (offset < prompt.length) meta.push({ type: '', id: randomUUID(), meta_type: 'text', text: prompt.slice(offset) });
   return { type: '', id: randomUUID(), material_list: material, meta_list: meta };
 }
 

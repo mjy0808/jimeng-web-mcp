@@ -11,6 +11,7 @@ export const productionSubmitSchema = z.object({
     submitId: z.string().uuid(), mediaType: z.enum(['image', 'video']),
     prompt: z.string().min(1).max(PRODUCTION_PROMPT_CHARACTER_LIMIT), model: z.string(),
     references: z.array(z.string()).max(30),
+    referenceAudios: z.array(z.object({ path: z.string().min(1), sha256: z.string().regex(/^[a-f0-9]{64}$/), durationMs: z.number().int().min(2000).max(30000) })).max(10).optional().describe('Seedance 2.5 音频参考，以 @音频N 绑定；合计不超过 30 秒'),
     referenceStrengths: z.array(z.number().min(0).max(1)).max(30).optional().describe('仅图片：逐张参考强度，与 references 顺序及数量相同；不是几何锁定'),
     referenceVideo: z.object({ path: z.string().min(1), sha256: z.string().regex(/^[a-f0-9]{64}$/), durationMs: z.number().int().min(4000).max(30000) }).optional().describe('已审核前镜视频全能参考，以 @视频1 绑定；不是编辑或强制首尾帧'),
     firstFrameImage: z.string().min(1).optional().describe('视频首帧输入；与 references 互斥，提示词使用普通文字而非 @图片 编号'),
@@ -21,6 +22,7 @@ export const productionSubmitSchema = z.object({
 
 /** Validate locally before reserving a shared-service generation slot. */
 export function validateProductionSubmit(params: z.infer<typeof productionSubmitSchema>): void {
+    if (params.referenceAudios && (params.mediaType !== 'video' || params.model !== 'seedance-2.5' || params.firstFrameImage || params.referenceAudios.reduce((sum, audio) => sum + audio.durationMs, 0) > 30000)) throw new Error('音频参考须为 Seedance 2.5 全能参考、合计不超过 30 秒');
     if (params.referenceStrengths !== undefined && (params.mediaType !== 'image' || params.referenceStrengths.length !== params.references.length)) throw new Error('参考强度仅用于图片，且必须与参考图片一一对应');
     if (params.mediaType === 'image') {
       const limits: Record<string, number> = { 'jimeng-5.0-pro': 10, 'jimeng-5.0-lite': 4, 'jimeng-4.7': 4, 'jimeng-4.1': 4, 'jimeng-3.1': 1 };
@@ -42,7 +44,7 @@ export function registerProductionTools(server: McpServer): void {
     }
     let submitted;
     try {
-      submitted = await client.generateTextToVideo({ submitId: params.submitId, prompt: params.prompt, model: params.model, referenceImages: params.references, referenceVideo: params.referenceVideo, firstFrameImage: params.firstFrameImage, videoAspectRatio: params.ratio, resolution: params.resolution, duration: params.durationSeconds! * 1000, fps: 24, draft: params.draft, async: true });
+      submitted = await client.generateTextToVideo({ submitId: params.submitId, prompt: params.prompt, model: params.model, referenceImages: params.references, referenceVideo: params.referenceVideo, referenceAudios: params.referenceAudios, firstFrameImage: params.firstFrameImage, videoAspectRatio: params.ratio, resolution: params.resolution, duration: params.durationSeconds! * 1000, fps: 24, draft: params.draft, async: true });
     } catch (error) {
       if (error instanceof VideoSubmissionRejectedError) return result({
         taskId: params.submitId, mediaType: 'video', status: 'rejected', error: error.message,

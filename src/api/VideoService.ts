@@ -1,3 +1,4 @@
+import { AudioUploader } from './AudioUploader.js';
 import { VideoUploader, type UploadedVideo } from './VideoUploader.js';
 /**
  * VideoService - 统一视频生成服务
@@ -35,6 +36,7 @@ export interface TextToVideoParams {
   draft?: boolean;
   referenceImages?: string[];
   referenceVideo?: { path: string; sha256: string; durationMs: number };
+  referenceAudios?: Array<{ path: string; sha256: string; durationMs: number }>;
   prompt: string;
   model?: string;
   resolution?: '480p' | '720p' | '1080p';
@@ -106,6 +108,10 @@ export class VideoService {
     const isSeedance = model === 'seedance-2.0' || model === 'seedance-2.5';
     const references = params.referenceImages ?? [];
     const referenceVideo = params.referenceVideo;
+    const referenceAudios = params.referenceAudios ?? [];
+    if (referenceAudios.length && (model !== 'seedance-2.5' || firstFrameImage || lastFrameImage)) throw new Error('音频参考接入支持 Seedance 2.5 全能参考模式');
+    if (referenceAudios.length > 10 || referenceAudios.some(audio => !/^[a-f0-9]{64}$/.test(audio.sha256) || !Number.isInteger(audio.durationMs) || audio.durationMs < 2000 || audio.durationMs > 30000)
+      || referenceAudios.reduce((total, audio) => total + audio.durationMs, 0) > 30000) throw new Error('音频参考最多 10 段，单段 2–30 秒、合计不超过 30 秒');
     if (referenceVideo && (model !== 'seedance-2.5' || firstFrameImage || lastFrameImage)) throw new Error('视频参考仅支持 Seedance 2.5 全能参考模式，不能混用首尾帧');
     if (referenceVideo && (!/^[a-f0-9]{64}$/.test(referenceVideo.sha256) || !Number.isInteger(referenceVideo.durationMs) || referenceVideo.durationMs < 4000 || referenceVideo.durationMs > 30000)) throw new Error('参考视频需要审核 SHA256 和 4–30 秒时长');
     const placeholderVideo = referenceVideo ? { vid: '', width: 0, height: 0, durationMs: referenceVideo.durationMs, fps: 24 } : undefined;
@@ -117,7 +123,7 @@ export class VideoService {
     }
     if (references.length > (model === 'seedance-2.5' ? 30 : 9)) throw new Error('参考图数量超过模型上限');
     // Validate indices before uploading anything.
-    if (!firstFrameImage && !lastFrameImage) unifiedReferenceInput(prompt, references.map(() => ({})), placeholderVideo);
+    if (!firstFrameImage && !lastFrameImage) unifiedReferenceInput(prompt, references.map(() => ({})), placeholderVideo, referenceAudios.map(audio => ({ vid: '', durationMs: audio.durationMs })));
     const minDuration = isSeedance ? 4000 : 3000;
     const maxDuration = model === 'seedance-2.5' ? 30000 : 15000;
     if (!Number.isInteger(duration) || duration < minDuration || duration > maxDuration || (isSeedance && duration % 1000 !== 0)) {
@@ -176,8 +182,13 @@ export class VideoService {
         || uploadedVideo.width * uploadedVideo.height < 409600 || uploadedVideo.width * uploadedVideo.height > 8295044
         || !Number.isFinite(uploadedVideo.fps) || uploadedVideo.fps < 24 || uploadedVideo.fps > 60) throw new VideoSubmissionRejectedError('参考视频时长、尺寸或帧率不符合规格；未提交生成');
     }
-    const unifiedInput = references.length || uploadedVideo
-      ? unifiedReferenceInput(prompt, await Promise.all(references.map(path => this.imageUploader.upload(path))), uploadedVideo)
+    const uploadedAudios = await Promise.all(referenceAudios.map(async audio => {
+      const uploaded = await new AudioUploader(this.httpClient).upload(audio.path, audio.sha256);
+      if (Math.abs(uploaded.durationMs - audio.durationMs) > 100) throw new VideoSubmissionRejectedError('音频时长与已审核输入不一致，未提交生成');
+      return uploaded;
+    }));
+    const unifiedInput = references.length || uploadedVideo || uploadedAudios.length
+      ? unifiedReferenceInput(prompt, await Promise.all(references.map(path => this.imageUploader.upload(path))), uploadedVideo, uploadedAudios)
       : undefined;
 
     // 上传首尾帧图片
