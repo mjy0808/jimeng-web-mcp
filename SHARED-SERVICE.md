@@ -34,6 +34,7 @@ npm run login:shared
 
 - `production_submit`：提交一张图片或一段视频。
 - `production_edit`：编辑已审核的视频。
+- `production_image_edit`：按原图与蒙版进行图片局部重绘。
 - `production_promote_check` / `production_promote`：检查样片并提交升清。
 - `task_query`：查询原任务。
 - `service_check_login`：检查登录，不生成。
@@ -48,6 +49,36 @@ npm run login:shared
 相同项目、相同参数重复调用同一个 `submitId` 只返回原回执；更换参数或项目会拒绝。提交前记录会刷盘；响应丢失、崩溃与重启后只查询原任务，永不自动重提。原任务暂未找到时保留不确定状态及其并发位置，不能据此创建新的生成任务。尚未派发的 queued 任务可以在重启后继续派发。
 
 参考素材必须使用当前机器的绝对路径，排队期间保持文件不变。服务入队保存素材 SHA256，提交前复核，变化时拒绝派发。任务账本在 `.jimeng-service/tasks/`，保留它才能保持跨重启的防重复提交保护。迁移前生成的任务仍可通过原 taskId 只读查询；其他项目不能查询或覆盖服务已记录的任务。
+
+## 图片局部编辑
+
+先保存本次任务 UUID 和已审核文件的 SHA256，再调用 `production_image_edit`：
+
+```json
+{
+  "submitId": "调用方预先保存的 UUID",
+  "sourceImage": "/absolute/path/original.png",
+  "sourceSha256": "原图的 64 位小写 SHA256",
+  "maskImage": "/absolute/path/mask.png",
+  "maskSha256": "蒙版的 64 位小写 SHA256",
+  "prompt": "将白色选区中的衣服改成红色，保持原有材质和光照"
+}
+```
+
+原图支持 PNG、JPEG、WebP；蒙版须为 **同尺寸、8 位、不透明灰度 PNG**：白色修改、黑色保留，灰色用于羽化。拒绝彩色、透明、空白与无黑色保留区域的蒙版，不自动反转选区或缩放。原图存在 EXIF 旋转时须先导出方向已校正的图片，再据此制作蒙版。单文件不超过 20 MiB、像素不超过 16MP，属于本地资源限制。提示词最多 800 字符。可选 `strength` 为 0–1，省略时使用平台默认；该接口不接收普通生图的模型或 2K/4K 规格参数。
+
+使用 `shasum -a 256 /absolute/path/original.png` 获取文件 SHA256。原图与蒙版在入队前、派发前和上传前检查；排队期间保留文件不变。
+
+回执与其他生产工具一致：`taskId` 为原 `submitId`，`mediaType` 为 `image`；共享服务的 `submitted` 表示已持久接收，仍需查询。通过 `task_query({ taskId, mediaType: "image" })` 取得原始结果；不重提、不续生成，也不退回整图参考生成。输入两个文件不会被当作两张参考图混合。
+
+本实现依据即梦官方公开前端模块：
+
+- [原生 painting 转换器，模块 419491](https://lf3-lv-buz.vlabstatic.com/obj/image-lvweb-buz/ies/dreamina/web/mweb/static/js/async/8936.17b4db57e1.js)：`postedit_param.generate_type=7`、`origin_uri`、`mask_uri`。
+- [Draft 字段序列化](https://lf3-lv-buz.vlabstatic.com/obj/image-lvweb-buz/ies/dreamina/web/mweb/static/js/async/7198.650755846e.js)：图片 painting 能力及字段名称。
+- [蒙版导出](https://lf3-lv-buz.vlabstatic.com/obj/image-lvweb-buz/ies/dreamina/web/mweb/static/js/async/6268.8fc1ea58c4.js)：默认导出白色选区、黑色背景，并保留灰度抗锯齿。
+- [请求入口与计费场景](https://lf3-lv-buz.vlabstatic.com/obj/image-lvweb-buz/ies/dreamina/web/mweb/static/js/async/5224.0edff0ae3c.js)、[场景参数映射](https://lf3-lv-buz.vlabstatic.com/obj/image-lvweb-buz/ies/dreamina/web/mweb/static/js/async/6050.e08b8c1c40.js)：`to_image_inpaint`、`canvas_inpaint`。
+
+截至 2026-10-15，验证范围为官方脚本核对和离线测试；尚未执行真实付费局部编辑。请求明确指定单结果，但平台实际数量、扣费与画面效果仍待授权实测，异常多结果会被严格拒绝。
 
 ## 状态与手动停止
 

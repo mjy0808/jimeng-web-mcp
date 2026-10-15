@@ -40,7 +40,7 @@ async function fileHash(path: string): Promise<string> {
 }
 async function snapshot(args: Args): Promise<Record<string, string>> {
   const paths = new Set<string>(Array.isArray(args.references) ? args.references as string[] : []);
-  for (const key of ['firstFrameImage', 'sourceVideo']) if (typeof args[key] === 'string') paths.add(args[key] as string);
+  for (const key of ['firstFrameImage', 'sourceVideo', 'sourceImage', 'maskImage']) if (typeof args[key] === 'string') paths.add(args[key] as string);
   const video = args.referenceVideo as { path?: string } | undefined;
   if (video?.path) paths.add(video.path);
   const audios = args.referenceAudios as Array<{ path?: string }> | undefined;
@@ -102,6 +102,8 @@ export class ProductionQueue {
         return this.receipt(existing);
       }
       const files = await snapshot(args);
+      if (tool === 'production_image_edit' && (files[String(args.sourceImage)] !== args.sourceSha256
+        || files[String(args.maskImage)] !== args.maskSha256)) throw new Error('原图或蒙版与审核时的 SHA256 不匹配，未入队。');
       if (typeof args.sourceVideo === 'string' && files[args.sourceVideo] !== args.sourceSha256) throw new Error('源视频与审核时的 SHA256 不匹配，未入队。');
       const video = args.referenceVideo as { path?: string; sha256?: string } | undefined;
       if (video?.path && files[video.path] !== video.sha256) throw new Error('参考视频与审核时的 SHA256 不匹配，未入队。');
@@ -110,7 +112,7 @@ export class ProductionQueue {
       }
 
       const task: Task = { version: 1, id, project, tool, args, fingerprint, files,
-        mediaType: tool === 'production_submit' && args.mediaType === 'image' ? 'image' : 'video',
+        mediaType: tool === 'production_image_edit' || (tool === 'production_submit' && args.mediaType === 'image') ? 'image' : 'video',
         phase: 'queued', createdAt: Date.now() };
       await this.save(task);
       this.tasks.set(id, task);

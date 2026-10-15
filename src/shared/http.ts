@@ -7,6 +7,7 @@ import { registerProductionTools, productionSubmitSchema, validateProductionSubm
 import { projectId, type Connection } from './runtime.js';
 import type { Args, Backend, Data } from './queue.js';
 import { ProductionQueue } from './queue.js';
+import { imageEditSchema, validateImageEditFiles } from '../api/ImageEditService.js';
 
 interface Definition { name: string; description: string; schema: z.ZodRawShape }
 /** Reuse provider schemas; never expose the legacy tools that can bypass the account queue. */
@@ -59,6 +60,7 @@ export async function startSharedHttp(queue: ProductionQueue, backend: Backend, 
           try {
             if (definition.name === 'task_query') return response(await queue.query(project, args.taskId as string, args.mediaType as 'image' | 'video'));
             if (definition.name === 'production_submit') validateProductionSubmit(productionSubmitSchema.parse(args));
+            if (definition.name === 'production_image_edit') await validateImageEditFiles(imageEditSchema.parse(args));
             if (definition.name === 'production_edit' && (Number(args.startMs) >= Number(args.endMs) || Number(args.endMs) > Number(args.sourceDurationMs))) throw new Error('编辑时间范围必须在源视频内。');
             if (definition.name === 'production_promote_check') {
               // Validate ownership of the source if known; an old task is queried read-only.

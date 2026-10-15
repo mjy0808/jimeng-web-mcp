@@ -5,6 +5,8 @@
 
 ## 本地生图实测
 
+图片局部重绘现通过 `production_image_edit` 接入：原图 + 同尺寸灰度 PNG 蒙版（白改黑留）+ 两份 SHA256 + 提示词。沿用共享队列、单结果检查和 `task_query` 恢复；不是普通参考图生图。参数与离线验证边界见 [共享服务说明](SHARED-SERVICE.md#图片局部编辑)。
+
 ### Film Studio 本地集成
 
 Film Studio 默认使用本地构建的 `lib/shared-client.js`（stdio 桥接），由调用方按需启动并复用共享服务，服务空闲后继续运行。登录、任务队列与全局生成并发由即梦仓库管理；接入其他项目、状态与手动停止见 [多项目共享服务](SHARED-SERVICE.md)。原 `lib/server.js` 仍保留用于兼容旧接入。生产接口包括：

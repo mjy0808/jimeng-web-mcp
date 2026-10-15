@@ -18,7 +18,8 @@ test('concurrent calling processes start one service; disconnect keeps it alive;
     const client = new Client({ name: project, version: '1.0.0' });
     clients.push(client);
     await client.connect(new StdioClientTransport({ command: process.execPath, args: [entry], env: { ...baseEnv, JIMENG_PROJECT_ID: project }, stderr: 'ignore' }));
-    await client.listTools();
+    const { tools } = await client.listTools();
+    assert(tools.some(tool => tool.name === 'production_image_edit' && tool.inputSchema.properties?.maskImage), 'the compiled stdio bridge exposes native masked image editing');
     return client;
   };
   try {

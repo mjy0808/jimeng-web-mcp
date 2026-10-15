@@ -6,6 +6,7 @@ import { submitVideoEdit } from './api/VideoEditService.js';
 import { checkVideoDraftPromotion, submitVideoDraftPromotion } from './api/VideoDraftPromotionService.js';
 import { VideoSubmissionRejectedError } from './api/VideoService.js';
 import { PRODUCTION_PROMPT_CHARACTER_LIMIT } from './production-prompt-limit.js';
+import { imageEditSchema, submitImageEdit } from './api/ImageEditService.js';
 
 export const productionSubmitSchema = z.object({
     submitId: z.string().uuid(), mediaType: z.enum(['image', 'video']),
@@ -35,6 +36,8 @@ export function validateProductionSubmit(params: z.infer<typeof productionSubmit
 
 export function registerProductionTools(server: McpServer): void {
   const result = (value: Record<string, unknown>) => ({ structuredContent: value, content: [{ type: 'text' as const, text: JSON.stringify(value) }] });
+  server.tool('production_image_edit', '按原图和蒙版进行图片局部重绘；白色修改、黑色保留。先持久化 submitId，超时只用 task_query(mediaType=image) 查询原任务。',
+    imageEditSchema.shape, async params => result(await submitImageEdit(params)));
   server.tool('production_submit', '提交且仅提交一张图片或一段视频。调用前持久化 submitId；超时后只用 task_query 恢复，禁止重试提交。', productionSubmitSchema.shape, async (params) => {
     const client = getApiClient();
     validateProductionSubmit(params);
