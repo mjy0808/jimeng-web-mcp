@@ -28,7 +28,7 @@ export function validateProductionSubmit(params: z.infer<typeof productionSubmit
     if (params.referenceStrengths !== undefined && (params.mediaType !== 'image' || params.referenceStrengths.length !== params.references.length)) throw new Error('参考强度仅用于图片，且必须与参考图片一一对应');
     if (params.mediaType === 'image') {
       const limits: Record<string, number> = { 'jimeng-5.0-pro': 10, 'jimeng-5.0-lite': 4, 'jimeng-4.7': 4, 'jimeng-4.1': 4, 'jimeng-3.1': 1 };
-      if (!Object.prototype.hasOwnProperty.call(limits, params.model) || params.resolution !== '2k' || params.references.length > limits[params.model] || params.durationSeconds !== undefined || params.firstFrameImage !== undefined || params.draft !== undefined || params.referenceVideo !== undefined) throw new Error('不支持的图片模型/规格/参考图数量');
+      if (!Object.prototype.hasOwnProperty.call(limits, params.model) || !['2k', '4k'].includes(params.resolution) || params.references.length > limits[params.model] || params.durationSeconds !== undefined || params.firstFrameImage !== undefined || params.draft !== undefined || params.referenceVideo !== undefined) throw new Error('不支持的图片模型/规格/参考图数量');
       return;
     }
     const vip = Object.prototype.hasOwnProperty.call(SEEDANCE_20_VIP_MODELS, params.model)
@@ -47,7 +47,7 @@ export function registerProductionTools(server: McpServer): void {
     const client = getApiClient();
     validateProductionSubmit(params);
     if (params.mediaType === 'image') {
-      const historyId = await client.generateImage({ submitId: params.submitId, prompt: params.prompt, model: params.model, filePath: params.references, reference_strength: params.referenceStrengths, aspectRatio: params.ratio, resolution: '2k', count: 1, async: true, refresh_token: process.env.JIMENG_API_TOKEN! });
+      const historyId = await client.generateImage({ submitId: params.submitId, prompt: params.prompt, model: params.model, filePath: params.references, reference_strength: params.referenceStrengths, aspectRatio: params.ratio, resolution: params.resolution as '2k' | '4k', count: 1, async: true, refresh_token: process.env.JIMENG_API_TOKEN! });
       return result({ taskId: params.submitId, historyId, mediaType: 'image', status: 'submitted' });
     }
     let submitted;

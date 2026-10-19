@@ -27,7 +27,7 @@ Film Studio 默认使用本地构建的 `lib/shared-client.js`（stdio 桥接）
 - `production_submit`：`submitId` 为调用方预先持久化的 UUID；`mediaType` 为 image/video；参数为 `prompt`、`model`、有序 `references`、`ratio`、`resolution`，视频另传 `durationSeconds`。首帧模式传 `firstFrameImage` 且 `references: []`，正文用“从首帧继续……”等普通文字，不写 `@图片N`。Seedance 2.5 样片传 `draft: true` 且只支持 480p；这是独立样片任务，不是普通 480p 视频。只提交一个结果，返回 `structuredContent.taskId/mediaType/status`，图片另返回 `historyId`。超时后禁止重试提交。
 - `task_query`：按 `taskId` 与 `mediaType` 只读查询一次，无内存缓存依赖，不续生成。返回 `not_found/processing/completed/failed` 与 `outputs`；封面、失败部分结果和异常数量不能充当成功结果。
 
-新增图片模型：`jimeng-5.0-pro → high_aes_general_v50p_large`，`jimeng-4.7 → high_aes_general_v43`。生产工具参考图固定 2K，单张；Pro 最多10张参考，Lite/4.7/4.1 暂按4张，3.1最多1张。Seedance 2.0/2.5 支持图片全能参考（保持 `@图片N` 顺序）或真实首帧输入，两种模式不混用，不支持视频/音频参考。Film Studio 通过首帧模式承接上一镜已选用版本的尾帧，设定图片保留为作者设计依据而非伪装成上传参考；仍需人工审查画面连续性。
+新增图片模型：`jimeng-5.0-pro → high_aes_general_v50p_large`，`jimeng-4.7 → high_aes_general_v43`。Film Studio 默认生成单张 2K 参考图；共享生产接口 `production_submit` 支持显式选择 `2k` / `4k`，每次只生成一张，不自动降级；Pro 最多10张参考，Lite/4.7/4.1 暂按4张，3.1最多1张。Seedance 2.0/2.5 支持图片全能参考（保持 `@图片N` 顺序）或真实首帧输入，两种模式不混用，不支持视频/音频参考。Film Studio 通过首帧模式承接上一镜已选用版本的尾帧，设定图片保留为作者设计依据而非伪装成上传参考；仍需人工审查画面连续性。
 
 凭据由调用方私下传入 `JIMENG_API_TOKEN`，不要填入上游跟踪的 `.env`。HTTP Cookie 仅发往即梦站点，不发送给 ImageX 上传域，不自动跟随重定向。当前 Node HTTP 连接使用 IPv4，避免已复现的 IPv6 路由超时。
 

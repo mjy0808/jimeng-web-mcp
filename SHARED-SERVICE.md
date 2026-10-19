@@ -40,6 +40,8 @@ npm run login:shared
 - `service_check_login`：检查登录，不生成。
 - `service_status`：查看本项目的服务队列。
 
+`production_submit` 图片规格支持 `2k` / `4k`，分辨率与画面比例原样传递到底层图片接口，不自动降级。视频规格按模型区分：2.0 VIP 为 `720p` / `1080p` / `4k`，Fast VIP 为 `720p`，2.5 为 `480p` / `720p` / `1080p`。实际可用规格以模型与平台回执为准。
+
 提交前由调用项目持久化 UUID `submitId`。`status: submitted` 表示共享服务已持久接收任务，`serviceStatus` 表示 queued/submitting/submitted 等细分状态，不代表即梦已经开始生成。排队与生成中的 `task_query` 都返回 `processing`；排队任务附带队列位置。
 
 服务默认同时保留最多三项活跃生成，包含上游处理中任务。所有项目共享此上限，其余持久排队；任务完成、失败或明确拒绝后释放位置。这个数值是本地上限，实际平台权限与额度仍以账号为准。
