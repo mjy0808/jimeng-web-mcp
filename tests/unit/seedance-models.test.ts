@@ -1,3 +1,4 @@
+import { vipModels } from '../support/seedance-vip.js';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
@@ -21,6 +22,7 @@ describe('Seedance video model selection', () => {
     jest.spyOn(HttpClient.prototype, 'request').mockImplementation(async (options) => {
       if (options.url === '/mweb/v1/video_generate/get_common_config') return {
         ret: '0', data: { model_list: [
+          ...vipModels(),
           { model_req_key: 'dreamina_seedance_45_pro', model_status: 0, options: [{ key: 'resolution', enum_val: { string_value: ['480p'] } }] },
           { model_req_key: 'dreamina_seedance_45_pro_draft', model_status: 0, extra: { is_draft_mode: true },
             options: [{ key: 'resolution', forbidden_display: false, enum_val: { string_value: ['480p'] } }],
@@ -53,7 +55,7 @@ describe('Seedance video model selection', () => {
   }
 
   it('keeps old Jimeng Video 2.0 separate and rejects unknown/image model fallback', () => {
-    expect(getModel('seedance-2.0')).toBe('dreamina_seedance_40_pro');
+    expect(getModel('seedance-2.0-vip')).toBe('dreamina_seedance_40_pro_vision');
     expect(getModel('seedance-2.5')).toBe('dreamina_seedance_45_pro');
     expect(getVideoModel('jimeng-video-2.0')).toBe('dreamina_ic_generate_video_model_vgfm_lite');
     for (const model of ['unknown', 'jimeng-5.0-lite', 'toString', 'constructor']) {
@@ -62,8 +64,10 @@ describe('Seedance video model selection', () => {
   });
 
   it.each([
-    ['seedance-2.0', 'dreamina_seedance_40_pro', '720p', 4000, 'dreamina_video_seedance_20_pro'],
-    ['seedance-2.0', 'dreamina_seedance_40_pro', '720p', 15000, 'dreamina_video_seedance_20_pro'],
+    ['seedance-2.0-vip', 'dreamina_seedance_40_pro_vision', '720p', 4000, 'seedance_20_pro_720p_output'],
+    ['seedance-2.0-vip', 'dreamina_seedance_40_pro_vision', '1080p', 15000, 'seedance_20_pro_1080p_output'],
+    ['seedance-2.0-vip', 'dreamina_seedance_40_pro_vision', '4k', 4000, 'seedance_20_pro_4k_output'],
+    ['seedance-2.0-fast-vip', 'dreamina_seedance_40_vision', '720p', 4000, 'seedance_20_fast_720p_output'],
     ['seedance-2.5', 'dreamina_seedance_45_pro', '480p', 4000, 'seedance_25_480p_no_input_video_output'],
     ['seedance-2.5', 'dreamina_seedance_45_pro', '720p', 5000, 'seedance_25_720p_no_input_video_output'],
     ['seedance-2.5', 'dreamina_seedance_45_pro', '1080p', 30000, 'seedance_25_1080p_no_input_video_output'],
@@ -102,7 +106,7 @@ describe('Seedance video model selection', () => {
   });
 
   it.each([
-    { model: 'seedance-2.0', resolution: '720p' },
+    { model: 'seedance-2.0-vip', resolution: '720p' },
     { model: 'seedance-2.5', resolution: '720p' },
     { model: 'seedance-2.5', resolution: '1080p' },
   ])('rejects invalid sample mode %j before submitting', async options => {
@@ -111,14 +115,14 @@ describe('Seedance video model selection', () => {
   });
 
   it.each([
-    { model: 'seedance-2.0', resolution: '1080p' },
-    { model: 'seedance-2.0', resolution: '480p' },
-    { model: 'seedance-2.0', duration: 16000 },
+    { model: 'seedance-2.0-fast-vip', resolution: '1080p' },
+    { model: 'seedance-2.0-vip', resolution: '480p' },
+    { model: 'seedance-2.0-vip', duration: 16000 },
     { model: 'seedance-2.5', duration: 31000 },
     { model: 'seedance-2.5', duration: 3000 },
-    { model: 'seedance-2.0', duration: 4500 },
+    { model: 'seedance-2.0-vip', duration: 4500 },
     { model: 'seedance-2.5', duration: NaN },
-    { model: 'seedance-2.0', fps: 30 },
+    { model: 'seedance-2.0-vip', fps: 30 },
     { model: 'seedance-2.5', fps: 12 },
     { model: 'seedance-2.5', resolution: '4k' },
     { model: 'jimeng-video-3.0', resolution: '480p' },
@@ -131,7 +135,7 @@ describe('Seedance video model selection', () => {
     expect(requests).toHaveLength(0);
   });
 
-  it.each(['seedance-2.0', 'seedance-2.5'])('does not use %s through the legacy multi/reference wire formats', async (model) => {
+  it.each(['seedance-2.0-vip', 'seedance-2.0-fast-vip', 'seedance-2.5'])('does not use %s through the legacy multi/reference wire formats', async (model) => {
     await expect(client.generateMultiFrameVideo({
       model, async: true, frames: [0, 1].map(idx => ({ idx, imagePath: `/${idx}.png`, duration_ms: 2000, prompt: 'test' }))
     })).rejects.toThrow(/不支持模型/);
@@ -162,9 +166,9 @@ describe('Seedance video model selection', () => {
       const { tools } = await mcp.listTools();
       for (const name of ['video', 'video_frame']) {
         const modelSchema = tools.find(t => t.name === name)!.inputSchema.properties!.model as any;
-        expect(modelSchema.enum).toEqual(expect.arrayContaining(['seedance-2.0', 'seedance-2.5']));
+        expect(modelSchema.enum).toEqual(expect.arrayContaining(['seedance-2.0-vip', 'seedance-2.0-fast-vip', 'seedance-2.5']));
         expect(modelSchema.default).toBe('jimeng-video-3.0');
-        for (const model of ['seedance-2.0', 'seedance-2.5']) {
+        for (const model of ['seedance-2.0-vip', 'seedance-2.0-fast-vip', 'seedance-2.5']) {
           const response = await mcp.callTool({ name, arguments: {
             prompt: 'test', model, ...(name === 'video_frame' ? { firstFrameImage: '/first.png', lastFrameImage: '/last.png' } : {})
           } });
@@ -174,11 +178,11 @@ describe('Seedance video model selection', () => {
       }
       for (const name of ['video_multi', 'video_mix']) {
         const schema = tools.find(t => t.name === name)!.inputSchema.properties!.model as any;
-        expect(schema.enum).not.toContain('seedance-2.0');
+        expect(schema.enum).not.toContain('seedance-2.0-vip');
         expect(schema.enum).not.toContain('seedance-2.5');
       }
       requests.length = 0;
-      const invalid = await mcp.callTool({ name: 'video_frame', arguments: { prompt: 'test', model: 'seedance-2.0', resolution: '1080p', firstFrameImage: '/first.png' } });
+      const invalid = await mcp.callTool({ name: 'video_frame', arguments: { prompt: 'test', model: 'seedance-2.0-fast-vip', resolution: '1080p', firstFrameImage: '/first.png' } });
       expect(invalid.isError).toBe(true);
       const invalidModel = await mcp.callTool({ name: 'video', arguments: { prompt: 'test', model: 'typo' } });
       expect(invalidModel.isError).toBe(true);

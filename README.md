@@ -3,11 +3,18 @@
 > 本地维护仓库：[mjy0808/jimeng-web-mcp](https://github.com/mjy0808/jimeng-web-mcp)。
 > 验证本地修改请使用本仓库源码；下文 `npx -y jimeng-web-mcp` 下载的是 npm 发布包，不包含尚未发布的本地修改。
 
-## SpineAuto：Seedance 2.0 Fast 全能参考
+## Seedance 2.0 VIP 模型
 
-已增加 `seedance-2.0-fast` → `dreamina_seedance_40`，依据 2026-10-19 已登录账号配置，区别于标准版和 Fast VIP。当前支持 720p、24fps、4–15 秒。上传前再次核实该模型名称、账号可用性、分辨率与计费键。生产调用使用 `production_submit` 的图片 `references` 与 `@图片1`，不传 `firstFrameImage`。
+按 2026-10-19 用户要求，将原 2.0/2.0 Fast 新提交选项替换为明确的 VIP 模型：
 
-已通过 Fast 请求构造与已有 Seedance 模型离线回归。本次真实 5 秒视频任务被平台以 4013 明确拒绝，未得到成片，未自动重提；不能据此声称 Fast 视频生成实测通过。
+| 调用标识 | 官网模型 | 当前接入规格 |
+| --- | --- | --- |
+| `seedance-2.0-vip` | `dreamina_seedance_40_pro_vision` | 720p / 1080p / 4k |
+| `seedance-2.0-fast-vip` | `dreamina_seedance_40_vision` | 720p |
+
+两个模型均为 24fps、4–15 整秒、最多 9 张图片参考，支持全能图片参考或独立首尾帧模式。本次未扩展 VIP 视频/音频参考。上传前读取当前账号 `video_generate/get_common_config`，核实精确 VIP 模型名称、可用状态、所选分辨率和对应 VIP 计费键，再按秒数填写 `amount`。无权限或配置不匹配时明确拒绝，不改用普通版、其他规格或其他模型。
+
+原 `seedance-2.0`、`seedance-2.0-fast` 不再接受新提交，也不会隐式升级 VIP；调用方须明确改用上表标识。已有任务仍通过原 `taskId` 和 `task_query` 查询，不重新提交。原非 VIP 路径曾返回 4013，不能据此推断 VIP 已验证成功。此次只核对实时账号配置并完成离线测试，尚未执行 VIP 付费生成。
 
 ## 本地生图实测
 
@@ -333,7 +340,7 @@ npm run test:live:image -- /absolute/path/credentials.env ./output/my-test --res
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
 | `prompt` | string | ✅ | - | 视频描述 |
-| `model` | string | ❌ | jimeng-video-3.0 | 视频模型，新增 `seedance-2.0` / `seedance-2.5` |
+| `model` | string | ❌ | jimeng-video-3.0 | 视频模型，支持 `seedance-2.0-vip` / `seedance-2.0-fast-vip` / `seedance-2.5` |
 | `resolution` | string | ❌ | 720p | 2.0 仅720p；2.5 支持480p/720p/1080p；旧模型720p/1080p |
 | `fps` | number | ❌ | 24 | Seedance 固定24；旧模型12-30 |
 | `duration` | number | ❌ | 5000 | 毫秒：2.0 为4000-15000，2.5 为4000-30000，均须整秒；旧模型3000-15000 |
@@ -621,7 +628,8 @@ npm run start:api
 
 | 模型名称 | 说明 | 推荐场景 |
 |---------|------|---------|
-| `seedance-2.0` | 即梦 Seedance 2.0 标准版，720p、4-15秒、24fps | `video` / `video_frame` |
+| `seedance-2.0-vip` | 即梦 Seedance 2.0 VIP，720p/1080p/4k、4-15秒、24fps | `video` / `video_frame` / `production_submit` |
+| `seedance-2.0-fast-vip` | 即梦 Seedance 2.0 Fast VIP，720p、4-15秒、24fps | `video` / `video_frame` / `production_submit` |
 | `seedance-2.5` | 即梦 Seedance 2.5，480p/720p/1080p、4-30秒、24fps | `video` / `video_frame` |
 
 Film Studio 的 `production_submit` 可对 `seedance-2.5` 指定 `draft: true` 生成 480p 样片；此接口目前不提供基于样片任务 ID 升清正式版。普通 `480p` 请求不会自动成为样片。
@@ -629,9 +637,9 @@ Film Studio 的 `production_submit` 可对 `seedance-2.5` 指定 `draft: true` �
 | `jimeng-video-3.0-pro` | Pro高质量版本 | 专业级作品 |
 | `jimeng-video-2.0-pro` | 兼容性好 | 多场景适配 |
 
-`seedance-2.0` 不等于旧的 `jimeng-video-2.0`，也不会自动切换为 Fast 或 VIP 版。默认模型不变。
+旧的 `jimeng-video-2.0` 保持独立。VIP 标识使用上表明确选择，默认模型不变。
 
-映射和能力取自 2026-09-03 [即梦网页](https://jimeng.jianying.com/ai-tool/generate) 的 `video_generate/get_common_config` 配置：2.0 为 `dreamina_seedance_40_pro`，2.5 为 `dreamina_seedance_45_pro`。本地会在上传前拒绝不支持的参数组合，不自动替换模型或重试付费任务。是否可调用仍取决于账号权限及网页服务；本次仅完成参数构建和离线测试，未进行付费视频生成验证。
+VIP 映射和规格于 2026-10-19 从当前账号的[即梦网页](https://jimeng.jianying.com/ai-tool/generate) `video_generate/get_common_config` 核实，2.5 继续使用 `dreamina_seedance_45_pro`。实际权限、价格和生成成功率以平台回执为准；不会自动替换模型或重试付费任务。
 
 旧 `video_multi` / `video_mix` 的多帧/主体融合协议不等同于 Seedance 的全能参考；图片全能参考请用 `production_submit`。尚未接入视频编辑或长视频分镜模式。
 

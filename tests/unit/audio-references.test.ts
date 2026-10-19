@@ -28,7 +28,7 @@ describe('Seedance audio reference transport', () => {
     expect(payload.unified_edit_input.material_list.map((item: any) => item.material_type)).toEqual(['image', 'audio']);
     expect(payload.unified_edit_input.material_list[1].audio_info.vid).toBe('voice');
     audio.mockClear(); request.mockClear();
-    for (const patch of [{ model: 'seedance-2.0' }, { prompt: '@图片1人物' }, { referenceAudios: [{ ...input.referenceAudios[0], durationMs: 31000 }] }]) {
+    for (const patch of [{ model: 'seedance-2.0-vip' }, { prompt: '@图片1人物' }, { referenceAudios: [{ ...input.referenceAudios[0], durationMs: 31000 }] }]) {
       await expect(new NewJimengClient('offline-only').generateTextToVideo({ ...input, ...patch })).rejects.toThrow();
       expect(audio).not.toHaveBeenCalled(); expect(request).not.toHaveBeenCalled();
     }

@@ -1,3 +1,4 @@
+import { vipModels } from '../support/seedance-vip.js';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { randomUUID } from 'node:crypto';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -134,7 +135,7 @@ describe('Film Studio single-result production protocol', () => {
       expect(input.unified_edit_input.edit_input).toBeUndefined();
       expect(input.first_frame_image).toBeUndefined(); expect(input.end_frame_image).toBeUndefined();
       video.mockClear(); request.mockClear();
-      expect((await mcp.callTool({ name: 'production_submit', arguments: { ...args, model: 'seedance-2.0' } })).isError).toBe(true);
+      expect((await mcp.callTool({ name: 'production_submit', arguments: { ...args, model: 'seedance-2.0-vip' } })).isError).toBe(true);
       expect(video).not.toHaveBeenCalled(); expect(request).not.toHaveBeenCalled();
     } finally {
       if (originalToken === undefined) delete process.env.JIMENG_API_TOKEN; else process.env.JIMENG_API_TOKEN = originalToken;
@@ -175,10 +176,12 @@ describe('Film Studio single-result production protocol', () => {
     expect(abilities.gen_option.gen_count).toBe(1);
     expect(JSON.stringify(abilities)).toContain('######三个参考');
   });
-  it.each(['seedance-2.0', 'seedance-2.5'])('submits a real first frame through production_submit for %s, never as a unified image', async model => {
+  it.each(['seedance-2.0-vip', 'seedance-2.0-fast-vip', 'seedance-2.5'])('submits a real first frame through production_submit for %s, never as a unified image', async model => {
     const submitId = randomUUID();
     const upload = jest.spyOn(ImageUploader.prototype, 'upload').mockResolvedValue({ uri: 'approved-tail', width: 1280, height: 720, format: 'png' } as any);
-    const request = jest.spyOn(HttpClient.prototype, 'request').mockResolvedValue({ ret: '0', data: { aigc_data: { submit_id: submitId } } } as any);
+    const request = jest.spyOn(HttpClient.prototype, 'request').mockImplementation(async input => input.url === '/mweb/v1/video_generate/get_common_config'
+      ? { ret: '0', data: { model_list: vipModels() } } as any
+      : { ret: '0', data: { aigc_data: { submit_id: submitId } } } as any);
     const server = new McpServer({ name: 'production-test', version: '1' });
     registerProductionTools(server);
     const mcp = new Client({ name: 'offline-first-frame', version: '1' });
@@ -194,7 +197,7 @@ describe('Film Studio single-result production protocol', () => {
       expect(result.structuredContent).toEqual({ taskId: submitId, mediaType: 'video', status: 'submitted' });
       expect(upload).toHaveBeenCalledTimes(1);
       expect(upload).toHaveBeenCalledWith('/approved-tail.png');
-      const body = request.mock.calls[0][0].data;
+      const body = request.mock.calls.find(([input]) => input.url === '/mweb/v1/aigc_draft/generate')![0].data;
       const draft = JSON.parse(body.draft_content);
       const input = draft.component_list[0].abilities.gen_video.text_to_video_params.video_gen_inputs[0];
       expect(body.submit_id).toBe(submitId);
@@ -248,7 +251,7 @@ describe('Film Studio single-result production protocol', () => {
       input = JSON.parse(request.mock.calls.at(-1)![0].data.draft_content).component_list[0].abilities.gen_video.text_to_video_params.video_gen_inputs[0];
       expect(input.is_draft_mode).toBeUndefined();
       request.mockClear();
-      expect((await mcp.callTool({ name: 'production_submit', arguments: { ...args, model: 'seedance-2.0', draft: true } })).isError).toBe(true);
+      expect((await mcp.callTool({ name: 'production_submit', arguments: { ...args, model: 'seedance-2.0-vip', draft: true } })).isError).toBe(true);
       expect(request).not.toHaveBeenCalled();
     } finally {
       if (originalToken === undefined) delete process.env.JIMENG_API_TOKEN; else process.env.JIMENG_API_TOKEN = originalToken;

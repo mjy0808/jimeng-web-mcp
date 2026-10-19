@@ -9,7 +9,7 @@ import { VideoUploader, type UploadedVideo } from './VideoUploader.js';
 
 import { HttpClient } from './HttpClient.js';
 import { ImageUploader } from './ImageUploader.js';
-import { DEFAULT_VIDEO_MODEL, getVideoModel, SEEDANCE_25_DRAFT_MODEL_KEY } from '../types/models.js';
+import { DEFAULT_VIDEO_MODEL, getVideoModel, SEEDANCE_20_VIP_MODELS, SEEDANCE_25_DRAFT_MODEL_KEY } from '../types/models.js';
 import { logger } from '../utils/logger.js';
 import { unifiedReferenceInput, queryProductionTask } from './ProductionTasks.js';
 
@@ -39,7 +39,7 @@ export interface TextToVideoParams {
   referenceAudios?: Array<{ path: string; sha256: string; durationMs: number }>;
   prompt: string;
   model?: string;
-  resolution?: '480p' | '720p' | '1080p';
+  resolution?: '480p' | '720p' | '1080p' | '4k';
   fps?: number;
   duration?: number;
   async?: boolean;
@@ -105,7 +105,9 @@ export class VideoService {
 
     // 在上传/提交前检查模型能力；不能静默改模型、分辨率或时长。
     const standardModel = getVideoModel(model);
-    const isSeedance = ['seedance-2.0', 'seedance-2.0-fast', 'seedance-2.5'].includes(model);
+    const vipModel = Object.prototype.hasOwnProperty.call(SEEDANCE_20_VIP_MODELS, model)
+      ? SEEDANCE_20_VIP_MODELS[model as keyof typeof SEEDANCE_20_VIP_MODELS] : undefined;
+    const isSeedance = !!vipModel || model === 'seedance-2.5';
     const references = params.referenceImages ?? [];
     const referenceVideo = params.referenceVideo;
     const referenceAudios = params.referenceAudios ?? [];
@@ -132,7 +134,7 @@ export class VideoService {
     if (!Number.isInteger(fps) || (isSeedance ? fps !== 24 : fps < 12 || fps > 30)) {
       throw new Error(`${model}: fps必须为${isSeedance ? '24' : '12-30之间的整数'}`);
     }
-    const resolutions = ['seedance-2.0', 'seedance-2.0-fast'].includes(model) ? ['720p'] : model === 'seedance-2.5' ? ['480p', '720p', '1080p'] : ['720p', '1080p'];
+    const resolutions: readonly string[] = vipModel?.resolutions ?? (model === 'seedance-2.5' ? ['480p', '720p', '1080p'] : ['720p', '1080p']);
     if (!resolutions.includes(resolution)) {
       throw new Error(`${model}: resolution仅支持${resolutions.join('/')}`);
     }
@@ -143,8 +145,7 @@ export class VideoService {
 
     // 图片路径保持原计费；有输入视频时须使用当前账号返回的输入视频计费配置。
     const commerceInfo = {
-      benefit_type: model === 'seedance-2.0' ? 'dreamina_video_seedance_20_pro'
-        : model === 'seedance-2.5' ? `seedance_25_${resolution}_no_input_video_output`
+      benefit_type: model === 'seedance-2.5' ? `seedance_25_${resolution}_no_input_video_output`
         : 'basic_video_operation_vgfm_v_three',
       resource_id: 'generate_video',
       resource_id_type: 'str',
@@ -173,21 +174,21 @@ export class VideoService {
       Object.assign(commerceInfo, price, { amount: duration / 1000 });
     }
 
-    if (model === 'seedance-2.0-fast') {
-      // Verify the exact Fast model and its current account commerce configuration
-      // before uploading. Never substitute Pro or Fast VIP.
+    if (vipModel) {
+      // Read the selected VIP route and price before uploads; never substitute a non-VIP route.
       const response = await this.httpClient.request({
         url: '/mweb/v1/video_generate/get_common_config',
         data: { scene: 'generate_video', params: { needCache: true } },
       });
       const current = response?.data?.model_list?.find((item: any) => item.model_req_key === standardModel);
       const available = current?.options?.find((item: any) => item.key === 'resolution' && !item.forbidden_display)?.enum_val?.string_value;
-      const price = current?.commercial_config?.default;
+      const price = current?.commercial_config?.resolution_price_configs
+        ?.find((item: any) => item.resolution === resolution)?.price;
       if (String(response?.ret) !== '0' || current?.model_status !== 0
-        || current?.model_name?.trim() !== '即梦 Seedance 2.0 Fast'
+        || current?.model_name?.trim() !== vipModel.name
         || !Array.isArray(available) || !available.includes(resolution)
-        || typeof price?.benefit_type !== 'string' || !price.benefit_type) {
-        throw new VideoSubmissionRejectedError('即梦当前未开放 Seedance 2.0 Fast 或没有返回对应计费配置；未上传参考、未提交生成');
+        || price?.benefit_type !== `${vipModel.commercePrefix}_${resolution}_output`) {
+        throw new VideoSubmissionRejectedError(`即梦当前未开放 ${vipModel.name} 所选规格或没有返回对应 VIP 计费配置；未上传参考、未提交生成`);
       }
       Object.assign(commerceInfo, price, { amount: duration / 1000 });
     }

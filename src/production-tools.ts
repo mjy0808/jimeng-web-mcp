@@ -7,17 +7,18 @@ import { checkVideoDraftPromotion, submitVideoDraftPromotion } from './api/Video
 import { VideoSubmissionRejectedError } from './api/VideoService.js';
 import { PRODUCTION_PROMPT_CHARACTER_LIMIT } from './production-prompt-limit.js';
 import { imageEditSchema, submitImageEdit } from './api/ImageEditService.js';
+import { SEEDANCE_20_VIP_MODELS } from './types/models.js';
 
 export const productionSubmitSchema = z.object({
     submitId: z.string().uuid(), mediaType: z.enum(['image', 'video']),
-    prompt: z.string().min(1).max(PRODUCTION_PROMPT_CHARACTER_LIMIT), model: z.string(),
+    prompt: z.string().min(1).max(PRODUCTION_PROMPT_CHARACTER_LIMIT), model: z.string().describe('视频使用 seedance-2.0-vip、seedance-2.0-fast-vip 或 seedance-2.5；不接受原非 VIP 2.0 别名'),
     references: z.array(z.string()).max(30),
     referenceAudios: z.array(z.object({ path: z.string().min(1), sha256: z.string().regex(/^[a-f0-9]{64}$/), durationMs: z.number().int().min(2000).max(30000) })).max(10).optional().describe('Seedance 2.5 音频参考，以 @音频N 绑定；合计不超过 30 秒'),
     referenceStrengths: z.array(z.number().min(0).max(1)).max(30).optional().describe('仅图片：逐张参考强度，与 references 顺序及数量相同；不是几何锁定'),
     referenceVideo: z.object({ path: z.string().min(1), sha256: z.string().regex(/^[a-f0-9]{64}$/), durationMs: z.number().int().min(4000).max(30000) }).optional().describe('已审核前镜视频全能参考，以 @视频1 绑定；不是编辑或强制首尾帧'),
     firstFrameImage: z.string().min(1).optional().describe('视频首帧输入；与 references 互斥，提示词使用普通文字而非 @图片 编号'),
     ratio: z.enum(['1:1', '16:9', '9:16', '3:4', '4:3', '3:2', '2:3', '21:9']),
-    resolution: z.enum(['2k', '480p', '720p', '1080p']), durationSeconds: z.number().int().min(4).max(30).optional(),
+    resolution: z.enum(['2k', '4k', '480p', '720p', '1080p']), durationSeconds: z.number().int().min(4).max(30).optional(),
     draft: z.boolean().optional().describe('仅 Seedance 2.5 + 480p；生成可供审核的样片，不是普通 480p 视频'),
 });
 
@@ -30,8 +31,11 @@ export function validateProductionSubmit(params: z.infer<typeof productionSubmit
       if (!Object.prototype.hasOwnProperty.call(limits, params.model) || params.resolution !== '2k' || params.references.length > limits[params.model] || params.durationSeconds !== undefined || params.firstFrameImage !== undefined || params.draft !== undefined || params.referenceVideo !== undefined) throw new Error('不支持的图片模型/规格/参考图数量');
       return;
     }
-    if (!['seedance-2.0', 'seedance-2.0-fast', 'seedance-2.5'].includes(params.model) || params.resolution === '2k' || params.durationSeconds === undefined) throw new Error('不支持的视频模型/规格');
-    if (params.model === 'seedance-2.0-fast' && (params.resolution !== '720p' || params.durationSeconds > 15)) throw new Error('Seedance 2.0 Fast 仅支持 720p、4–15 秒');
+    const vip = Object.prototype.hasOwnProperty.call(SEEDANCE_20_VIP_MODELS, params.model)
+      ? SEEDANCE_20_VIP_MODELS[params.model as keyof typeof SEEDANCE_20_VIP_MODELS] : undefined;
+    if ((!vip && params.model !== 'seedance-2.5') || params.durationSeconds === undefined) throw new Error('不支持的视频模型/规格；2.0 请显式选择 seedance-2.0-vip 或 seedance-2.0-fast-vip');
+    const resolutions: readonly string[] = vip?.resolutions ?? ['480p', '720p', '1080p'];
+    if (!resolutions.includes(params.resolution) || (vip && (params.durationSeconds < 4 || params.durationSeconds > 15))) throw new Error(`不支持的视频模型/规格：${vip?.name ?? 'Seedance 2.5'} 的分辨率或时长`);
     if (params.draft && (params.model !== 'seedance-2.5' || params.resolution !== '480p')) throw new Error('Seedance 2.5 样片模式仅支持 480p');
 }
 

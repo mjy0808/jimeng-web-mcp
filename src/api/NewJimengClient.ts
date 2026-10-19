@@ -711,7 +711,7 @@ export class NewJimengClient {
       prompt: params.prompt,
       firstFrameImage: params.filePath?.[0],
       lastFrameImage: params.filePath?.[1],
-      resolution: params.resolution as "480p" | "720p" | "1080p" | undefined,
+      resolution: params.resolution as "480p" | "720p" | "1080p" | "4k" | undefined,
       fps: params.fps,
       duration: params.duration_ms,
       model: params.model,

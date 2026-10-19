@@ -20,6 +20,9 @@ test('concurrent calling processes start one service; disconnect keeps it alive;
     await client.connect(new StdioClientTransport({ command: process.execPath, args: [entry], env: { ...baseEnv, JIMENG_PROJECT_ID: project }, stderr: 'ignore' }));
     const { tools } = await client.listTools();
     assert(tools.some(tool => tool.name === 'production_image_edit' && tool.inputSchema.properties?.maskImage), 'the compiled stdio bridge exposes native masked image editing');
+    const submit = tools.find(tool => tool.name === 'production_submit')!;
+    assert.match(JSON.stringify(submit.inputSchema.properties?.model), /seedance-2.0-fast-vip/);
+    assert.match(JSON.stringify(submit.inputSchema.properties?.resolution), /4k/);
     return client;
   };
   try {

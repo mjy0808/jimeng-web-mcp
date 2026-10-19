@@ -16,12 +16,16 @@ export const LEGACY_VIDEO_MODEL_MAP = {
   'jimeng-video-multiframe': 'dreamina_ic_generate_video_model_vgfm_3.0'
 } as const;
 
+/** VIP routes verified against the signed-in account's web configuration on 2026-10-19. */
+export const SEEDANCE_20_VIP_MODELS = {
+  'seedance-2.0-vip': { name: '即梦 Seedance 2.0 VIP', model: 'dreamina_seedance_40_pro_vision', resolutions: ['720p', '1080p', '4k'], commercePrefix: 'seedance_20_pro' },
+  'seedance-2.0-fast-vip': { name: '即梦 Seedance 2.0 Fast VIP', model: 'dreamina_seedance_40_vision', resolutions: ['720p'], commercePrefix: 'seedance_20_fast' },
+} as const;
+
 export const VIDEO_MODEL_MAP = {
   ...LEGACY_VIDEO_MODEL_MAP,
-  // 即梦网页 get_common_config（2026-09-03）；标准版，不是 Fast / VIP。
-  'seedance-2.0': 'dreamina_seedance_40_pro',
-  // 2026-10-19 已登录账号 get_common_config：Fast，区别于 Fast VIP。
-  'seedance-2.0-fast': 'dreamina_seedance_40',
+  'seedance-2.0-vip': SEEDANCE_20_VIP_MODELS['seedance-2.0-vip'].model,
+  'seedance-2.0-fast-vip': SEEDANCE_20_VIP_MODELS['seedance-2.0-fast-vip'].model,
   'seedance-2.5': 'dreamina_seedance_45_pro'
 } as const;
 

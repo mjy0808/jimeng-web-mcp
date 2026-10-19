@@ -464,10 +464,10 @@ export interface BaseVideoGenerationOptions {
  * 文生视频选项
  */
 export interface TextToVideoOptions extends Omit<BaseVideoGenerationOptions, 'resolution' | 'duration'> {
-  /** Seedance 2.0 仅720p；2.5 支持480p/720p/1080p */
-  resolution?: '480p' | '720p' | '1080p';
+  /** Seedance 2.0 VIP 支持720p/1080p/4k，Fast VIP仅720p；2.5 支持480p/720p/1080p */
+  resolution?: '480p' | '720p' | '1080p' | '4k';
 
-  /** 毫秒；Seedance 2.0 为4-15秒，2.5 为4-30秒，均须整秒 */
+  /** 毫秒；Seedance 2.0 VIP/Fast VIP 为4-15秒，2.5 为4-30秒，均须整秒 */
   duration?: number;
 
   /** 视频描述文本 */
