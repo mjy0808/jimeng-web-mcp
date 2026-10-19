@@ -13,7 +13,7 @@ export const legacyVideoModelSchema = z.enum(Object.keys(LEGACY_VIDEO_MODEL_MAP)
 // 与 MCP video / video_frame 共用，模型相关的交叉约束由 VideoService 在上传前检查。
 export const textToVideoControls = {
   model: z.enum(Object.keys(VIDEO_MODEL_MAP) as [string, ...string[]]).default(DEFAULT_VIDEO_MODEL)
-    .describe('视频模型；seedance-2.0/seedance-2.5 为新版 Seedance，jimeng-video-2.0 是旧模型'),
+    .describe('视频模型；seedance-2.0/seedance-2.0-fast/seedance-2.5 为新版 Seedance，jimeng-video-2.0 是旧模型'),
   resolution: z.enum(['480p', '720p', '1080p']).default('720p')
     .describe('Seedance 2.0 仅720p；2.5 支持480p/720p/1080p；旧模型720p/1080p'),
   fps: z.number().int().min(12).max(30).default(24).describe('Seedance固定24fps；旧模型12-30'),

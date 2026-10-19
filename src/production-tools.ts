@@ -30,7 +30,8 @@ export function validateProductionSubmit(params: z.infer<typeof productionSubmit
       if (!Object.prototype.hasOwnProperty.call(limits, params.model) || params.resolution !== '2k' || params.references.length > limits[params.model] || params.durationSeconds !== undefined || params.firstFrameImage !== undefined || params.draft !== undefined || params.referenceVideo !== undefined) throw new Error('不支持的图片模型/规格/参考图数量');
       return;
     }
-    if (!['seedance-2.0', 'seedance-2.5'].includes(params.model) || params.resolution === '2k' || params.durationSeconds === undefined) throw new Error('不支持的视频模型/规格');
+    if (!['seedance-2.0', 'seedance-2.0-fast', 'seedance-2.5'].includes(params.model) || params.resolution === '2k' || params.durationSeconds === undefined) throw new Error('不支持的视频模型/规格');
+    if (params.model === 'seedance-2.0-fast' && (params.resolution !== '720p' || params.durationSeconds > 15)) throw new Error('Seedance 2.0 Fast 仅支持 720p、4–15 秒');
     if (params.draft && (params.model !== 'seedance-2.5' || params.resolution !== '480p')) throw new Error('Seedance 2.5 样片模式仅支持 480p');
 }
 

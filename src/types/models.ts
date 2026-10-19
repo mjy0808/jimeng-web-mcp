@@ -20,6 +20,8 @@ export const VIDEO_MODEL_MAP = {
   ...LEGACY_VIDEO_MODEL_MAP,
   // 即梦网页 get_common_config（2026-09-03）；标准版，不是 Fast / VIP。
   'seedance-2.0': 'dreamina_seedance_40_pro',
+  // 2026-10-19 已登录账号 get_common_config：Fast，区别于 Fast VIP。
+  'seedance-2.0-fast': 'dreamina_seedance_40',
   'seedance-2.5': 'dreamina_seedance_45_pro'
 } as const;
 

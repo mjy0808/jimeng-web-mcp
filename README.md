@@ -3,6 +3,12 @@
 > 本地维护仓库：[mjy0808/jimeng-web-mcp](https://github.com/mjy0808/jimeng-web-mcp)。
 > 验证本地修改请使用本仓库源码；下文 `npx -y jimeng-web-mcp` 下载的是 npm 发布包，不包含尚未发布的本地修改。
 
+## SpineAuto：Seedance 2.0 Fast 全能参考
+
+已增加 `seedance-2.0-fast` → `dreamina_seedance_40`，依据 2026-10-19 已登录账号配置，区别于标准版和 Fast VIP。当前支持 720p、24fps、4–15 秒。上传前再次核实该模型名称、账号可用性、分辨率与计费键。生产调用使用 `production_submit` 的图片 `references` 与 `@图片1`，不传 `firstFrameImage`。
+
+已通过 Fast 请求构造与已有 Seedance 模型离线回归。本次真实 5 秒视频任务被平台以 4013 明确拒绝，未得到成片，未自动重提；不能据此声称 Fast 视频生成实测通过。
+
 ## 本地生图实测
 
 图片局部重绘现通过 `production_image_edit` 接入：原图 + 同尺寸灰度 PNG 蒙版（白改黑留）+ 两份 SHA256 + 提示词。沿用共享队列、单结果检查和 `task_query` 恢复；不是普通参考图生图。参数与离线验证边界见 [共享服务说明](SHARED-SERVICE.md#图片局部编辑)。
